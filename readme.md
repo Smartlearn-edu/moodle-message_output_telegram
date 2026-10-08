@@ -12,16 +12,16 @@ The **Telegram Message Processor** (`message_telegram`) delivers Moodle notifica
 ---
 
 ## ✨ Key Features
-- **Real-Time Notification Delivery:** Course announcements, assignment grades, feedback, forum replies, quiz submissions, and system alerts sent instantly to Telegram.
+- **Real-Time Notification Delivery:** Course announcements, assignment grades, feedback, forum replies, quiz submissions, and system alerts sent directly to Telegram.
 - **Rich HTML Formatting:** Messages display bold titles, clean body text, and direct clickable **"Open in Moodle"** action links.
 - **Message Length Protection:** Automatically chunks or truncates long notifications (such as daily forum digests) to respect Telegram's 4,096-character limit without delivery failures.
 - **Decoupled Secure Authentication:** Account linking uses cryptographically secure 32-character tokens without exposing user session CSRF tokens (`sesskey`).
-- **Multiple Account Linking Methods:**
-  1. **Automatic Phone Number Matching:** Users tap one button in Telegram to share their phone number; Moodle matches it to their custom profile field automatically.
-  2. **Manual Chat ID Entry:** Users find their numeric Telegram ID via `@idbot` or `@userinfobot` and paste it directly into Moodle preferences.
-  3. **One-Click Deep Link:** Users click the "Connect with Telegram" button in Moodle preferences (`t.me/<bot>?start=<token>`).
+- **Multiple Easy Account Linking Methods:**
+  1. **One-Click Connection Link (Classic Moodle Docs Way):** Users click "Connect with Telegram" in Moodle preferences and tap Start in Telegram.
+  2. **Automatic Phone Number Matching:** Users tap one button in Telegram to share their phone number; Moodle matches it to their custom profile field automatically.
+  3. **Manual Chat ID Entry:** Users find their numeric Telegram ID via `@idbot` or `@userinfobot` and paste it directly into Moodle preferences.
+- **Zero-Fuss Background Polling:** Powered by Moodle's built-in scheduled background task (`\message_telegram	ask\poll_updates`) every minute — firewall-friendly and requires zero webhook or server configuration.
 - **Privacy API Compliant (GDPR):** Fully implements Moodle's Privacy Subsystem for user metadata declaration, preference export, and deletion.
-- **Dual Transport (Polling & Webhook):** Supports automatic polling via background cron task as well as real-time Webhook endpoint for instant delivery.
 
 ---
 
@@ -29,140 +29,130 @@ The **Telegram Message Processor** (`message_telegram`) delivers Moodle notifica
 
 ### Step 1: Create Your Telegram Bot via BotFather
 
-1. Open Telegram on your phone, desktop, or web, and search for [`@BotFather`](https://t.me/BotFather) (look for the verified blue checkmark).
-2. Start the chat with BotFather by clicking **Start** or sending:
-   ```text
-   /start
-   ```
-3. Create a new bot by sending:
-   ```text
-   /newbot
-   ```
-4. **Choose a Display Name:** Enter a friendly name for your bot that users will see (for example: `SmartLearn Alerts` or `University LMS Bot`).
-5. **Choose a Username:** Enter a unique bot username. It **must** end in `bot` or `_bot` (for example: `smartlearn_alert_bot` or `myuniv_moodle_bot`).
-6. **Copy the API Token:** BotFather will provide an **HTTP API Token**. It looks like this:
-   ```text
-   1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ123456789
-   ```
+1. In Moodle, go to **Site Administration > Plugins > Message outputs > Telegram** (`/admin/settings.php?section=messagesettingtelegram`).
+   You will see the initial setup screen:
+
+   ![Initial Telegram Settings Screen](doc/images/01_settings_initial.png)
+
+2. Click the link to open [@BotFather](https://t.me/BotFather) in Telegram:
+
+   ![Open Telegram App to BotFather](doc/images/02_open_botfather.png)
+
+3. In Telegram, click the **Start** button at the bottom of the chat to begin your conversation with BotFather:
+
+   ![Click Start in BotFather](doc/images/03_botfather_start_button.png)
+
+4. Send the command `/newbot` in the chat. BotFather will prompt you for:
+   - A friendly **Display Name** for your bot (e.g., `SmartLearn LMS Alerts`).
+   - A unique **Username** ending in `bot` (e.g., `smartlearn_alerts_bot`).
+
+   ![Send /newbot command to BotFather](doc/images/04_botfather_newbot_cmd.png)
+
+5. Once created, BotFather will display your **HTTP API Token**:
+
+   ![BotFather displays the HTTP API Token](doc/images/05_botfather_token_received.png)
+
    > ⚠️ **Keep this token secret.** Anyone with this token can send messages on behalf of your bot.
 
-#### (Recommended) Customize Your Bot Appearance in BotFather:
-- **Set Profile Picture:** Send `/setuserpic`, choose your bot, and upload your school or institution logo.
-- **Set Description:** Send `/setdescription` to define the greeting message shown before users press Start (e.g., *"Official notification bot for our Moodle LMS"*).
-- **Set About Info:** Send `/setabouttext` to add a short bio to the bot's profile.
-
 ---
 
-### Step 2: Install and Configure the Plugin in Moodle
+### Step 2: Configure the Plugin in Moodle
 
-#### 2.1 Install the Plugin
-1. Place or clone the plugin directory into your Moodle installation at:
-   ```bash
-   moodle/message/output/telegram
-   ```
-2. As an administrator, go to **Site Administration > Notifications** (or run `php admin/cli/upgrade.php` from your terminal) to complete the database upgrade.
-
-#### 2.2 Enable the Telegram Message Output (Required First Step)
+#### 2.1 Enable the Telegram Message Output
 > ℹ️ **Important:** Moodle hides message plugin settings until the plugin is enabled in the message outputs manager.
 1. Navigate to **Site Administration > Plugins > Message outputs > Manage message outputs** (`/admin/message.php`).
-2. Locate **Telegram** in the list.
-3. Make sure the **Enabled** column is active (the eye icon should be **open / enabled**).
-4. Click the **Settings** link next to Telegram (or continue to Step 2.3).
+2. Locate **Telegram** in the list and ensure the eye icon is **open / enabled**.
 
-#### 2.3 Configure Telegram Bot Token
+#### 2.2 Enter the Bot Token in Moodle Settings
 1. Go to **Site Administration > Plugins > Message outputs > Telegram** (`/admin/settings.php?section=messagesettingtelegram`).
-2. In the **Bot token for site** field, paste the HTTP API Token copied from BotFather.
-3. Click **Save changes**.
-4. Moodle will contact the Telegram API and automatically populate the **Bot name for site** and **Bot username for site** fields.
+2. Paste your API token into the **Bot token for site** field and click **Save changes**:
 
-#### 2.4 Create Required Custom Profile Field for Telegram Phone
-The plugin links phone numbers strictly via a **Custom User Profile Field** so administrators can make it required upon registration:
+   ![Enter bot token and save changes](doc/images/06_enter_bot_token.png)
+
+3. Moodle will contact Telegram and automatically fill in the **Bot name for site** and **Bot username for site**:
+
+   ![Bot information populated automatically](doc/images/07_settings_configured.png)
+
+#### 2.3 (Optional) Configure Required Custom Profile Field for Phone
+If you wish to allow automatic phone matching:
 1. Navigate to **Site Administration > Users > User profile fields** (`/admin/user/profile/index.php`).
 2. Click **Create a new profile field** and choose **Text input**.
-3. Configure the profile field:
-   - **Short name:** `telegram` (or `telegram_phone`)
-   - **Name:** `Telegram Mobile Phone` (or `Telegram Chat No`)
-   - **Is this field required?:** **Yes** *(forces users to fill it out during registration or profile update)*
-   - **Display on signup page?:** **Yes** *(prompts new users immediately upon registration)*
-4. Click **Save changes**.
+3. Set **Short name** to `telegram` (or `telegram_phone`), check **Is this field required?** as **Yes**, and check **Display on signup page?** as **Yes**.
+4. Return to **Site Administration > Plugins > Message outputs > Telegram**, select your field under **Custom profile field for Telegram phone**, and save changes.
 
-#### 2.5 Select the Custom Profile Field in Telegram Settings
-1. Return to **Site Administration > Plugins > Message outputs > Telegram**.
-2. Under **Custom profile field for Telegram phone**, select your field from the dropdown (e.g., `Telegram Mobile Phone (telegram)`).
+#### 2.4 Configure Default Message Routing
+1. Go to **Site Administration > Plugins > Message outputs > Default message outputs** (`/admin/message.php`).
+2. Under the **Telegram** column, configure the notification events (Assignments, Forums, Grades, etc.) as **Permitted** and **Default enabled (Online / Offline)**.
 3. Click **Save changes**.
 
-#### 2.6 Configure Default Notification Routing
-1. Go to **Site Administration > Plugins > Message outputs > Default message outputs** (`/admin/message.php` -> Default message outputs).
-2. Review the notification matrix (Assignment notifications, Forum posts, Grades, System alerts, etc.).
-3. Under the **Telegram** column, configure the desired notification types:
-   - **Permitted:** Allows users to choose whether or not to receive notifications via Telegram.
-   - **Default enabled (Online / Offline):** Automatically turns on Telegram notifications for users once their account is connected.
-4. Click **Save changes**.
-
-#### 2.7 Transport Mode: Webhook vs Polling
-The plugin supports two modes for receiving updates from Telegram:
-- **Option A: Webhook Mode (Recommended for Live Public HTTPS Sites)**
-  - If your Moodle site is accessible over public **HTTPS** (required by Telegram):
-  - In **Site Administration > Plugins > Message outputs > Telegram**, click the **Setup Telegram webhook** button.
-  - When active, Telegram pushes updates to your Moodle server in real time with zero delay.
-- **Option B: Polling Mode (For Localhost, Development, or Firewalled Sites)**
-  - If your site does not have a public HTTPS certificate or is running on a local development machine:
-  - Do **not** set a webhook (or click **Remove Telegram webhook** if previously set).
-  - Moodle's built-in scheduled background task (`\message_telegram\task\poll_updates`) will automatically poll Telegram updates every minute via Moodle cron.
-  - Ensure Moodle cron is running regularly:
-    ```bash
-    php admin/cli/cron.php
-    ```
+#### 2.5 Ensure Moodle Cron is Running
+The plugin processes bot updates and dispatches notifications via Moodle's background task system. Ensure Moodle cron is active:
+```bash
+php admin/cli/cron.php
+```
 
 ---
 
-### Step 3: Connect User Accounts to Telegram
+## 📱 Step 3: Connecting User Accounts to Telegram
 
-There are two primary methods for users to link their Moodle account to Telegram, plus a direct web link fallback:
+Users can connect their Moodle account to Telegram using any of the following 3 convenient methods:
 
 ---
 
-#### 📱 Method 1: Automatic Phone Matching (Easiest — Zero Codes)
-This method requires no codes or manual configuration from the user:
-1. **Prerequisite:** The student enters their phone number in their Moodle profile under the custom profile field (e.g. during registration or under **Edit profile**).
-2. In Telegram, the user searches for your bot (`@your_bot_name`) and clicks **Start** (or sends `/start`).
-3. The bot responds automatically with an interactive button:
+### Method 1: The One-Click Connection Link (Classic Moodle Docs Way)
+
+1. In Moodle, click your user avatar in the top-right corner and select **Preferences > Notification preferences**.
+2. Locate the **Telegram** column (showing an alert indicating it is not yet configured) and click the gear/settings icon:
+
+   ![User notification preferences with Telegram column](doc/images/08_user_notification_prefs.png)
+
+3. In the popup dialogue, click the **Connect with Telegram** link:
+
+   ![Connect with Telegram popup dialog](doc/images/09_user_connect_dialog.png)
+
+4. Telegram will open to your site's bot. Click the **Start** button at the bottom of the chat:
+
+   ![Click Start in site bot chat](doc/images/10_user_click_start_bot.png)
+
+5. Return to your Moodle browser window/tab and click **Save changes**:
+
+   ![Save changes in Moodle](doc/images/11_save_user_preferences.png)
+
+6. The alert icon is gone, and the connection is active! You can now customize your notification preferences:
+
+   ![Telegram connected successfully in preferences](doc/images/12_user_connected_preferences.png)
+
+---
+
+### Method 2: Automatic Phone Number Matching (Zero Codes)
+
+1. The student enters their phone number in their Moodle profile under the custom profile field (during signup or under **Edit profile**).
+2. In Telegram, the student searches for your bot (`@your_bot_name`) and sends `/start`.
+3. The bot automatically replies with an interactive button:
    ```text
    📱 [ Share Phone Number to Connect ]
    ```
-4. The user taps the button and confirms sharing their phone contact.
-5. Moodle receives the verified phone number from Telegram, matches it against their custom profile field, and instantly links their account!
-6. The bot confirms:
+4. The student taps the button to share their contact.
+5. Moodle matches the phone number with their custom profile field and immediately links their account!
    ```text
    ✅ Welcome [Student Name]! Your Telegram account has been linked to [Site Name].
    ```
 
 ---
 
-#### 🆔 Method 2: Manual Chat ID Entry (Direct ID Linking)
-If a user cannot or does not want to share their phone number, they can link directly using their Telegram Chat ID:
-1. In Telegram, the user searches for [`@idbot`](https://t.me/idbot) or [`@userinfobot`](https://t.me/userinfobot) and clicks **Start**.
-2. The bot replies with their numeric Telegram ID (for example: `Id: 112345678` or `123456789`).
-3. In Moodle, the user clicks their avatar at top-right -> **Preferences > Notification preferences**.
-4. Click the **Settings / Gear icon** next to **Telegram**.
-5. In the **Or enter Telegram Chat ID manually** field, enter the numeric ID:
+### Method 3: Direct Telegram Chat ID Entry
+
+If a student cannot share their phone number or prefers manual configuration:
+1. In Telegram, open [@idbot](https://t.me/idbot) or [@userinfobot](https://t.me/userinfobot) and send `/start` to view your numeric Telegram ID (e.g. `123456789`).
+2. In Moodle **Notification preferences > Telegram settings**, enter the ID into **Or enter Telegram Chat ID manually**:
    ```text
-   112345678
+   123456789
    ```
-6. Click **Save changes**. The account is linked immediately and ready to receive notifications!
+3. Click **Save changes**. The account is linked immediately.
 
 ---
 
-#### 🔗 Method 3: One-Click Connection Link (Deep Link)
-1. In Moodle, go to **Preferences > Notification preferences > Telegram settings**.
-2. Click the blue **Connect with Telegram** button (`t.me/<bot>?start=<token>`).
-3. Telegram will open to the bot with a one-time secure 32-character token.
-4. Click **Start** in Telegram.
-5. Return to Moodle and click **Save changes**.
-
----
-
-#### How to Disconnect an Account:
+### How to Disconnect an Account:
 1. Go to **Preferences > Notification preferences > Telegram settings**.
 2. Click the **Disconnect Telegram** button.
 3. The user's Telegram Chat ID will be removed immediately and notifications will cease.
@@ -176,23 +166,16 @@ If a user cannot or does not want to share their phone number, they can link dir
 - **Solution:** Verify the token in **Site Administration > Plugins > Message outputs > Telegram** matches the token provided by BotFather.
 
 ### 2. Notifications are not being received on Telegram
-- **Check User Connection Status:** In **Preferences > Notification preferences > Telegram settings**, verify the account status displays `Connected as: <Chat ID>`.
-- **Check Notification Preferences:** In **Preferences > Notification preferences**, confirm that the checkboxes under the **Telegram** column are checked for the specific events (Assignments, Forums, etc.).
+- **Check Connection Status:** In **Preferences > Notification preferences > Telegram settings**, verify the account status displays `Connected as: <Chat ID>`.
+- **Check Notification Preferences:** In **Preferences > Notification preferences**, confirm that the checkboxes under the **Telegram** column are checked for the specific events.
 - **Check Moodle Cron:** Notifications are dispatched via background queues. Ensure Moodle cron is running:
   ```bash
   php admin/cli/cron.php
   ```
-- **Check Development Mode (`$CFG->noemailever`):** If testing on a development server, verify whether `$CFG->noemailever = true;` is present in `config.php`. This Moodle setting halts all outbound messaging.
+- **Check Development Mode (`->noemailever`):** If testing on a development server, verify whether `->noemailever = true;` is present in `config.php`. This Moodle setting halts all outbound messaging.
 
-### 3. Telegram bot does not respond when clicking Start
-- **If using Webhooks:** Ensure your Moodle site has a valid public SSL certificate (HTTPS) and that the URL is publicly reachable by Telegram servers.
-- **If using Polling:** Ensure Moodle cron is executing (`php admin/cli/cron.php`). Updates are fetched and processed every minute by the scheduled task `\message_telegram\task\poll_updates`.
-
-### 4. "Site must use HTTPS for Telegram's webhook function"
-- Telegram requires an authentic SSL certificate on a valid public domain for webhooks. If testing locally or without HTTPS, do not click "Setup Telegram webhook"; use standard background polling instead.
-
-### 5. "409 Conflict: can't use getUpdates method while webhook is active"
-- Telegram does not allow polling via `getUpdates` while a webhook is registered. In **Site Administration > Plugins > Message outputs > Telegram**, click **Remove Telegram webhook** to revert the bot back to polling mode.
+### 3. Telegram bot takes up to a minute to respond or link
+- Updates from Telegram are processed by Moodle's scheduled task `\message_telegram	ask\poll_updates`. Ensure Moodle cron is executing regularly (`php admin/cli/cron.php`).
 
 ---
 
@@ -200,7 +183,8 @@ If a user cannot or does not want to share their phone number, they can link dir
 This plugin is fully compliant with Moodle's Privacy Subsystem:
 - **User Preferences:** Stores the user's Telegram Chat ID in the core `user_preferences` table (`message_processor_telegram_chatid`).
 - **External Data Transmission:** Transmits notification content (subject, message body, context URL) and the recipient's Chat ID to Telegram's official API servers (`https://api.telegram.org`).
-- **Data Export & Erasure:** Fully implements `\core_privacy\local\metadata\null_provider` / user preference export and deletion handlers.
+- **Data Export & Erasure:** Fully implements `\core_privacy\local\metadata
+ull_provider` / user preference export and deletion handlers.
 
 ---
 

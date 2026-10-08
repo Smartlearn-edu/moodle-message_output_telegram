@@ -577,7 +577,7 @@ class manager {
      * @return int Number of updates processed.
      */
     public function process_all_pending_updates(): int {
-        if (empty($this->config('sitebottoken')) || !empty($this->config('webhook'))) {
+        if (empty($this->config('sitebottoken'))) {
             return 0;
         }
 
@@ -662,68 +662,6 @@ class manager {
     }
 
     /**
-     * Configure the webhook URL in Telegram Bot.
-     *
-     * @param string $webhookurl The endpoint URL.
-     * @return string Empty string on success, error message on failure.
-     */
-    public function set_webhook(string $webhookurl): string {
-        if (empty($this->config('sitebottoken'))) {
-            return get_string('sitebottokennotsetup', 'message_telegram');
-        }
-
-        $params = [
-            'url' => $webhookurl,
-            'allowed_updates' => json_encode(['message']),
-        ];
-
-        $response = $this->send_api_command('setWebhook', $params);
-        if (!empty($response->ok)) {
-            $this->set_config('webhook', '1');
-            return '';
-        }
-
-        return $response->description ?? 'Failed to set webhook.';
-    }
-
-    /**
-     * Remove the Telegram webhook, reverting bot to getUpdates polling mode.
-     *
-     * @return string Empty string on success, error message on failure.
-     */
-    public function delete_webhook(): string {
-        if (empty($this->config('sitebottoken'))) {
-            return get_string('sitebottokennotsetup', 'message_telegram');
-        }
-
-        $response = $this->send_api_command('deleteWebhook');
-        if (!empty($response->ok)) {
-            $this->set_config('webhook', '0');
-            return '';
-        }
-
-        return $response->description ?? 'Failed to remove webhook.';
-    }
-
-    /**
-     * Get webhook information directly from Telegram Bot API.
-     *
-     * @return \stdClass|null Object with url, pending_update_count, last_error_date, last_error_message, etc., or null.
-     */
-    public function get_webhook_info(): ?\stdClass {
-        if (empty($this->config('sitebottoken'))) {
-            return null;
-        }
-
-        $response = $this->send_api_command('getWebhookInfo');
-        if (!empty($response->ok) && isset($response->result) && is_object($response->result)) {
-            return $response->result;
-        }
-
-        return null;
-    }
-
-    /**
      * Returns the results of a getUpdates API request.
      *
      * @return array|false The decoded results array or false on failure.
@@ -733,6 +671,16 @@ class manager {
         if (!empty($response->ok) && isset($response->result) && is_array($response->result)) {
             return $response->result;
         }
+
+        // If Telegram returns 409 Conflict due to an old webhook, remove it to enable polling.
+        if (!empty($response->error_code) && (int)$response->error_code === 409) {
+            $this->send_api_command('deleteWebhook');
+            $retry = $this->send_api_command('getUpdates', ['limit' => 100]);
+            if (!empty($retry->ok) && isset($retry->result) && is_array($retry->result)) {
+                return $retry->result;
+            }
+        }
+
         return false;
     }
 
@@ -744,13 +692,15 @@ class manager {
      * @return \stdClass|null The decoded response object or null.
      */
     protected function send_api_command(string $command, array $params = []): ?\stdClass {
+        global $CFG;
+
         $token = $this->config('sitebottoken');
         if (empty($token)) {
             return null;
         }
 
         if ($this->curl === null) {
-            require_once($GLOBALS['CFG']->dirroot . '/lib/filelib.php');
+            require_once($CFG->libdir . '/filelib.php');
             $this->curl = new \curl();
         }
 

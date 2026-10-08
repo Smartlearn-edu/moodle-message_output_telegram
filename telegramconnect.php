@@ -58,33 +58,7 @@ require_login();
 
 $telegrammanager = new message_telegram\manager();
 
-if ($action === 'setwebhook') {
-    require_sesskey();
-    require_capability('moodle/site:config', context_system::instance());
-
-    if (strpos($CFG->wwwroot, 'https:') !== 0) {
-        \core\notification::error(get_string('requirehttps', 'message_telegram'));
-    } else {
-        $error = $telegrammanager->set_webhook($telegrammanager->redirect_uri());
-        if (empty($error)) {
-            \core\notification::success(get_string('webhookset', 'message_telegram'));
-        } else {
-            \core\notification::error(get_string('webhookerror', 'message_telegram', $error));
-        }
-    }
-    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']));
-} else if ($action === 'unsetwebhook') {
-    require_sesskey();
-    require_capability('moodle/site:config', context_system::instance());
-
-    $error = $telegrammanager->delete_webhook();
-    if (empty($error)) {
-        \core\notification::success(get_string('webhookremoved', 'message_telegram'));
-    } else {
-        \core\notification::error(get_string('webhookerror', 'message_telegram', $error));
-    }
-    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']));
-} else if ($action === 'removechatid') {
+if ($action === 'removechatid') {
     require_sesskey();
     $userid = optional_param('userid', $USER->id, PARAM_INT);
     $user = core_user::get_user($userid, '*', MUST_EXIST);
