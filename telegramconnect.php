@@ -29,7 +29,9 @@ require_once($CFG->dirroot . '/message/lib.php');
 
 // If incoming request is a Telegram Webhook POST payload.
 if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    define('NO_DEBUG_DISPLAY', true);
+    if (!defined('NO_DEBUG_DISPLAY')) {
+        define('NO_DEBUG_DISPLAY', true);
+    }
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw);
@@ -39,7 +41,10 @@ if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') 
         $manager->process_single_update($data);
     }
 
-    header('Content-Type: application/json');
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['ok' => true]);
     exit(0);
 }
@@ -58,19 +63,27 @@ if ($action === 'setwebhook') {
     require_capability('moodle/site:config', context_system::instance());
 
     if (strpos($CFG->wwwroot, 'https:') !== 0) {
-        $message = get_string('requirehttps', 'message_telegram');
+        \core\notification::error(get_string('requirehttps', 'message_telegram'));
     } else {
         $error = $telegrammanager->set_webhook($telegrammanager->redirect_uri());
-        $message = empty($error) ? get_string('webhookset', 'message_telegram') : $error;
+        if (empty($error)) {
+            \core\notification::success(get_string('webhookset', 'message_telegram'));
+        } else {
+            \core\notification::error(get_string('webhookerror', 'message_telegram', $error));
+        }
     }
-    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']), $message);
+    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']));
 } else if ($action === 'unsetwebhook') {
     require_sesskey();
     require_capability('moodle/site:config', context_system::instance());
 
     $error = $telegrammanager->delete_webhook();
-    $message = empty($error) ? get_string('webhookremoved', 'message_telegram') : $error;
-    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']), $message);
+    if (empty($error)) {
+        \core\notification::success(get_string('webhookremoved', 'message_telegram'));
+    } else {
+        \core\notification::error(get_string('webhookerror', 'message_telegram', $error));
+    }
+    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']));
 } else if ($action === 'removechatid') {
     require_sesskey();
     $userid = optional_param('userid', $USER->id, PARAM_INT);
@@ -81,10 +94,11 @@ if ($action === 'setwebhook') {
     }
 
     $telegrammanager->remove_chatid($userid);
-    redirect(
-        new moodle_url('/message/notificationpreferences.php', ['userid' => $userid]),
-        get_string('chatidremoved', 'message_telegram')
-    );
+    \core\notification::success(get_string('chatidremoved', 'message_telegram'));
+    redirect(new moodle_url('/message/notificationpreferences.php', ['userid' => $userid]));
 }
 
-redirect(new moodle_url('/'));
+if (has_capability('moodle/site:config', context_system::instance())) {
+    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']));
+}
+redirect(new moodle_url('/message/notificationpreferences.php', ['userid' => $USER->id]));

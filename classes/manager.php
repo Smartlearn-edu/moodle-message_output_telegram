@@ -706,6 +706,24 @@ class manager {
     }
 
     /**
+     * Get webhook information directly from Telegram Bot API.
+     *
+     * @return \stdClass|null Object with url, pending_update_count, last_error_date, last_error_message, etc., or null.
+     */
+    public function get_webhook_info(): ?\stdClass {
+        if (empty($this->config('sitebottoken'))) {
+            return null;
+        }
+
+        $response = $this->send_api_command('getWebhookInfo');
+        if (!empty($response->ok) && isset($response->result) && is_object($response->result)) {
+            return $response->result;
+        }
+
+        return null;
+    }
+
+    /**
      * Returns the results of a getUpdates API request.
      *
      * @return array|false The decoded results array or false on failure.
