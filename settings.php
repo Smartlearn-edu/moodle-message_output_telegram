@@ -89,14 +89,19 @@ if ($ADMIN->fulltree) {
         PARAM_TEXT
     ));
 
-    // Custom user profile field selector for Telegram phone number (custom profile fields only).
+    // Ensure standard Telegram custom profile field exists.
+    \message_telegram\manager::ensure_profile_field();
+
+    // Custom user profile field selector for Telegram phone number.
     $customfields = $DB->get_records_menu('user_info_field', null, 'name ASC', 'shortname, name');
     $fieldoptions = [];
     if (!empty($customfields)) {
         foreach ($customfields as $shortname => $name) {
             $fieldoptions[$shortname] = $name . ' (' . $shortname . ')';
         }
-        $defaultfield = (string)array_key_first($customfields);
+        $defaultfield = isset($customfields[\message_telegram\manager::PROFILE_FIELD_SHORTNAME])
+            ? \message_telegram\manager::PROFILE_FIELD_SHORTNAME
+            : (string)array_key_first($customfields);
     } else {
         $fieldoptions[''] = get_string('nocustomfields', 'message_telegram');
         $defaultfield = '';

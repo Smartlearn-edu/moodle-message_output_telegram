@@ -126,4 +126,72 @@ final class manager_test extends advanced_testcase {
         $this->assertTrue($result);
         $this->assertEquals('987654321', $manager->get_user_chatid((int)$user->id));
     }
+
+    /**
+     * Test auto-provisioning custom profile field in message_telegram.
+     */
+    public function test_ensure_profile_field(): void {
+        global $DB;
+        $this->resetAfterTest(true);
+
+        $fieldid1 = manager::ensure_profile_field();
+        $this->assertGreaterThan(0, $fieldid1);
+
+        $field = $DB->get_record('user_info_field', ['id' => $fieldid1]);
+        $this->assertNotEmpty($field);
+        $this->assertEquals(manager::PROFILE_FIELD_SHORTNAME, $field->shortname);
+
+        // Verify category was created.
+        $category = $DB->get_record('user_info_category', ['id' => $field->categoryid]);
+        $this->assertNotEmpty($category);
+        $this->assertEquals(manager::PROFILE_CATEGORY_NAME, $category->name);
+
+        // Idempotency.
+        $fieldid2 = manager::ensure_profile_field();
+        $this->assertEquals($fieldid1, $fieldid2);
+        $this->assertEquals(1, $DB->count_records('user_info_field', ['shortname' => manager::PROFILE_FIELD_SHORTNAME]));
+    }
+
+    /**
+     * Test finding user by phone via telegram_phone custom profile field.
+     */
+    public function test_find_user_by_phone_via_custom_field(): void {
+        global $DB;
+        $this->resetAfterTest(true);
+
+        $user = $this->getDataGenerator()->create_user(['phone1' => '']);
+        $manager = new manager();
+
+        $fieldid = manager::ensure_profile_field();
+        $data = (object)[
+            'userid' => $user->id,
+            'fieldid' => $fieldid,
+            'data' => '+966501234567',
+            'dataformat' => 0,
+        ];
+        $DB->insert_record('user_info_data', $data);
+
+        $found = $manager->find_user_by_phone('+966501234567');
+        $this->assertNotEmpty($found);
+        $this->assertEquals($user->id, $found->id);
+
+        // Local format search also matches.
+        $foundlocal = $manager->find_user_by_phone('0501234567');
+        $this->assertNotEmpty($foundlocal);
+        $this->assertEquals($user->id, $foundlocal->id);
+    }
+
+    /**
+     * Test finding user by phone via phone1 fallback.
+     */
+    public function test_find_user_by_phone_via_phone1_fallback(): void {
+        $this->resetAfterTest(true);
+
+        $user = $this->getDataGenerator()->create_user(['phone1' => '+201012345678']);
+        $manager = new manager();
+
+        $found = $manager->find_user_by_phone('01012345678');
+        $this->assertNotEmpty($found);
+        $this->assertEquals($user->id, $found->id);
+    }
 }

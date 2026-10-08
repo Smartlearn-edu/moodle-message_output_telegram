@@ -36,5 +36,7 @@ function xmldb_message_telegram_install(): bool {
     $provider->name = 'telegram';
     $DB->insert_record('message_processors', $provider);
 
+    \message_telegram\manager::ensure_profile_field();
+
     return true;
 }

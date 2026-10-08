@@ -67,3 +67,8 @@ $string['telegrambottoken'] = 'Telegram bot token';
 $string['telegramchatid'] = 'Telegram chat ID';
 $string['tokenexpired'] = 'The connection token has expired or is invalid. Please try connecting again.';
 $string['welcomelinked'] = '✅ Welcome {$a->name}! Your Telegram account has been linked to {$a->site}.';
+
+// Custom user profile field strings.
+$string['profile_category_name'] = 'Telegram';
+$string['profile_field_name'] = 'Telegram Phone Number';
+$string['profile_field_desc'] = 'Verified phone number for Telegram notifications and OTP verification.';

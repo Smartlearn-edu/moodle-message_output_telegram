@@ -37,6 +37,16 @@ class manager {
     protected $secretprefix = 'usersecret::';
 
     /**
+     * @var string Profile field shortname for verified Telegram phone numbers.
+     */
+    public const PROFILE_FIELD_SHORTNAME = 'telegram_phone';
+
+    /**
+     * @var string Profile category name for Telegram fields.
+     */
+    public const PROFILE_CATEGORY_NAME = 'Telegram';
+
+    /**
      * @var \curl|null The curl instance for HTTP communication.
      */
     protected $curl = null;
@@ -131,7 +141,7 @@ class manager {
         }
 
         // Check if custom profile field contains a direct numeric chat ID.
-        $customfield = $this->config('customphonefield');
+        $customfield = $this->config('customphonefield') ?: self::PROFILE_FIELD_SHORTNAME;
         if (!empty($customfield)) {
             $fieldvalue = $this->get_user_custom_field_value($userid, $customfield);
             if (!empty($fieldvalue) && preg_match('/^-?\d+$/', trim($fieldvalue))) {
@@ -407,6 +417,7 @@ class manager {
 
     /**
      * Find a Moodle user matching a given phone number.
+     * Checks configured custom profile field (defaulting to telegram_phone) and standard phone fields.
      *
      * @param string $phone The phone number to search for.
      * @return \stdClass|null The user record or null if not found.
@@ -419,8 +430,8 @@ class manager {
             return null;
         }
 
-        // Check configured custom profile field only.
-        $customfield = $this->config('customphonefield');
+        // 1. Check custom profile field (defaults to 'telegram_phone').
+        $customfield = $this->config('customphonefield') ?: self::PROFILE_FIELD_SHORTNAME;
         if (!empty($customfield)) {
             $sql = "SELECT d.userid, d.data
                       FROM {user_info_data} d
@@ -435,7 +446,78 @@ class manager {
             }
         }
 
+        // 2. Check standard phone fields (phone1 / phone2) as secondary fallback.
+        $candidates = $DB->get_records_select(
+            'user',
+            "deleted = 0 AND (phone1 IS NOT NULL AND phone1 <> '' OR phone2 IS NOT NULL AND phone2 <> '')",
+            null,
+            'id ASC',
+            'id, phone1, phone2, firstname, lastname, email, auth, suspended'
+        );
+        foreach ($candidates as $candidate) {
+            if (!empty($candidate->phone1) && $this->match_phone_numbers($phone, $candidate->phone1)) {
+                return $candidate;
+            }
+            if (!empty($candidate->phone2) && $this->match_phone_numbers($phone, $candidate->phone2)) {
+                return $candidate;
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * Ensure that the custom user profile field for Telegram phone numbers exists.
+     *
+     * @return int The profile field ID.
+     */
+    public static function ensure_profile_field(): int {
+        global $DB;
+
+        $field = $DB->get_record('user_info_field', ['shortname' => self::PROFILE_FIELD_SHORTNAME]);
+        if ($field) {
+            return (int)$field->id;
+        }
+
+        // Find or create category.
+        $category = $DB->get_record('user_info_category', ['name' => self::PROFILE_CATEGORY_NAME]);
+        if (!$category) {
+            $maxsort = $DB->get_field_sql('SELECT MAX(sortorder) FROM {user_info_category}') ?: 0;
+            $newcategory = new \stdClass();
+            $newcategory->name = self::PROFILE_CATEGORY_NAME;
+            $newcategory->sortorder = ((int)$maxsort) + 1;
+            $categoryid = (int)$DB->insert_record('user_info_category', $newcategory);
+        } else {
+            $categoryid = (int)$category->id;
+        }
+
+        $maxfieldsort = $DB->get_field_sql(
+            'SELECT MAX(sortorder) FROM {user_info_field} WHERE categoryid = :catid',
+            ['catid' => $categoryid]
+        ) ?: 0;
+
+        $newfield = new \stdClass();
+        $newfield->shortname = self::PROFILE_FIELD_SHORTNAME;
+        $newfield->name = get_string('profile_field_name', 'message_telegram');
+        $newfield->datatype = 'text';
+        $newfield->description = get_string('profile_field_desc', 'message_telegram');
+        $newfield->descriptionformat = 1;
+        $newfield->categoryid = $categoryid;
+        $newfield->sortorder = ((int)$maxfieldsort) + 1;
+        $newfield->required = 0;
+        $newfield->locked = 0;
+        $newfield->visible = 2; // PROFILE_VISIBLE_ALL
+        $newfield->forceunique = 0;
+        $newfield->signup = 0;
+        $newfield->defaultdata = '';
+        $newfield->defaultdataformat = 0;
+        $newfield->param1 = 30; // Display size.
+        $newfield->param2 = 50; // Max length.
+        $newfield->param3 = 0;
+        $newfield->param4 = null;
+        $newfield->param5 = null;
+
+        return (int)$DB->insert_record('user_info_field', $newfield);
     }
 
     /**
