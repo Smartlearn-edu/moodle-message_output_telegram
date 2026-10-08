@@ -419,7 +419,7 @@ class manager {
             return null;
         }
 
-        // 1. Check configured custom profile field first.
+        // Check configured custom profile field only.
         $customfield = $this->config('customphonefield');
         if (!empty($customfield)) {
             $sql = "SELECT d.userid, d.data
@@ -432,24 +432,6 @@ class manager {
                 if ($this->match_phone_numbers($phone, (string)$record->data)) {
                     return $DB->get_record('user', ['id' => $record->userid, 'deleted' => 0]);
                 }
-            }
-        }
-
-        // 2. Check standard phone fields (phone2 / phone1).
-        $candidates = $DB->get_records_select(
-            'user',
-            "deleted = 0 AND (phone1 IS NOT NULL AND phone1 <> '' OR phone2 IS NOT NULL AND phone2 <> '')",
-            null,
-            'id ASC',
-            'id, phone1, phone2, firstname, lastname, email, auth, suspended'
-        );
-
-        foreach ($candidates as $candidate) {
-            if (!empty($candidate->phone2) && $this->match_phone_numbers($phone, $candidate->phone2)) {
-                return $candidate;
-            }
-            if (!empty($candidate->phone1) && $this->match_phone_numbers($phone, $candidate->phone1)) {
-                return $candidate;
             }
         }
 

@@ -69,7 +69,6 @@ $string['telegrambottoken'] = 'Telegram bot token';
 $string['telegramchatid'] = 'Telegram chat ID';
 $string['tokenexpired'] = 'The connection token has expired or is invalid. Please try connecting again.';
 $string['unsetwebhook'] = 'Remove Telegram webhook';
-$string['usephonefields'] = 'Standard phone fields (phone1 / phone2)';
 $string['webhookremoved'] = 'Telegram webhook has been removed successfully.';
 $string['webhookset'] = 'Telegram webhook has been set successfully.';
 $string['welcomelinked'] = '✅ Welcome {$a->name}! Your Telegram account has been linked to {$a->site}.';

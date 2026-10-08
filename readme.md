@@ -77,19 +77,18 @@ The **Telegram Message Processor** (`message_telegram`) delivers Moodle notifica
    - **Default enabled (Online / Offline):** Automatically turns on Telegram notifications for users once their account is connected.
 4. Click **Save changes**.
 
-#### 5. Configure Required Custom Profile Field for Phone (Recommended)
-You can require users to enter their phone number upon signup so they can connect automatically:
+#### 5. Configure Required Custom Profile Field for Telegram Phone
+The plugin links users strictly via a **Custom User Profile Field** so you can make it required on registration:
 1. Navigate to **Site Administration > Users > User profile fields**.
 2. Click **Create a new profile field** and choose **Text input**.
 3. Configure the field:
-   - **Short name:** `telegram_phone` (or any shortname you prefer)
-   - **Name:** `Telegram Phone Number`
+   - **Short name:** `telegram` (or `telegram_phone` / any shortname you prefer)
+   - **Name:** `Telegram Chat No` (or `Telegram Mobile Phone`)
    - **Is this field required?:** **Yes** *(forces users to fill it out during registration or profile update)*
    - **Display on signup page?:** **Yes** *(prompts new users immediately upon registration)*
 4. Click **Save changes**.
 5. Return to **Site Administration > Plugins > Message outputs > Telegram**.
-6. Under **Custom profile field for Telegram phone**, select your field:  
-   `Telegram Phone Number (telegram_phone)`.
+6. Under **Custom profile field for Telegram phone**, select your field (e.g., `Telegram Chat No (telegram)`).
 7. Click **Save changes**.
 
 #### 6. (Optional) Configure Webhook Mode
@@ -103,14 +102,14 @@ If your Moodle site is accessible over public **HTTPS** (required by Telegram):
 ### Step 3: Connect User Accounts to Telegram
 
 #### Method A: Automatic Phone Matching (Easiest - Zero Codes)
-When a user has their phone number registered in their Moodle profile (either in the required custom profile field or standard mobile phone):
+When a user has their phone number registered in their Moodle profile inside the configured custom profile field:
 1. In Telegram, the user opens your bot (`@yourbot`) and clicks **Start**.
 2. The bot automatically replies with an interactive button:
    ```text
    📱 [ Share Phone Number to Connect ]
    ```
 3. The user taps the button. Telegram sends their verified phone number to the bot.
-4. Moodle matches the phone number with their Moodle profile and immediately links their account!
+4. Moodle matches the phone number with their custom profile field and immediately links their account!
 5. The bot replies:
    ```text
    ✅ Welcome [Student Name]! Your Telegram account has been linked to [Site Name].
