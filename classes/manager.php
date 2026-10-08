@@ -572,9 +572,39 @@ class manager {
             return false;
         }
 
-        // 1. User shared contact (Phone Number auto-link).
+        // 1. User shared contact (Phone Number auto-link or pending registration).
         if (isset($message->contact) && isset($message->contact->phone_number)) {
             $phone = (string)$message->contact->phone_number;
+
+            // Check if this contact matches a pending local_telegramotp registration in strict mode.
+            $pendingregtoken = get_config('local_telegramotp', 'pending_reg_' . $chatid);
+            if (!empty($pendingregtoken) && class_exists('\local_telegramotp\manager')) {
+                unset_config('pending_reg_' . $chatid, 'local_telegramotp');
+                $regresult = \local_telegramotp\manager::verify_bot_token($pendingregtoken, (int)$chatid, $phone);
+                if (!empty($regresult['success']) && !empty($regresult['user'])) {
+                    $user = $regresult['user'];
+                    $a = (object)[
+                        'name' => fullname($user),
+                        'site' => get_site()->fullname,
+                    ];
+                    $confirmation = get_string('telegram_welcome_verified', 'local_telegramotp', $a);
+                    $this->send_api_command('sendMessage', [
+                        'chat_id' => $chatid,
+                        'text' => $confirmation,
+                        'reply_markup' => json_encode(['remove_keyboard' => true]),
+                    ]);
+                    return true;
+                } else {
+                    $msg = $regresult['message'] ?? get_string('error_bot_phone_mismatch', 'local_telegramotp');
+                    $this->send_api_command('sendMessage', [
+                        'chat_id' => $chatid,
+                        'text' => $msg,
+                        'reply_markup' => json_encode(['remove_keyboard' => true]),
+                    ]);
+                    return false;
+                }
+            }
+
             $user = $this->find_user_by_phone($phone);
 
             if ($user) {
@@ -618,12 +648,74 @@ class manager {
                 $token = $parts[1] ?? '';
 
                 if (!empty($token)) {
-                    // Match token to pending secret in user preferences.
+                    // Check if token is for local_telegramotp registration (/start reg_...).
+                    if (strpos($token, 'reg_') === 0 && class_exists('\local_telegramotp\manager')) {
+                        $security = (string) get_config('local_telegramotp', 'bot_verification_security');
+                        if ($security === 'strict') {
+                            $check = \local_telegramotp\manager::verify_bot_token($token, (int)$chatid, null);
+                            if (!empty($check['need_contact'])) {
+                                set_config('pending_reg_' . $chatid, $token, 'local_telegramotp');
+                                $phone = $check['phone'] ?? '';
+                                $maskedphone = (strlen($phone) > 7)
+                                    ? substr($phone, 0, 4) . '****' . substr($phone, -3)
+                                    : $phone;
+                                $a = (object)[
+                                    'name'  => $check['name'] ?? '',
+                                    'phone' => $maskedphone,
+                                ];
+                                $prompt = get_string('telegram_prompt_share_reg', 'local_telegramotp', $a);
+                                $keyboard = [
+                                    'keyboard' => [
+                                        [
+                                            [
+                                                'text' => '📱 ' . get_string('share_phone_for_reg', 'local_telegramotp'),
+                                                'request_contact' => true,
+                                            ],
+                                        ],
+                                    ],
+                                    'resize_keyboard' => true,
+                                    'one_time_keyboard' => true,
+                                ];
+                                $this->send_api_command('sendMessage', [
+                                    'chat_id' => $chatid,
+                                    'text' => $prompt,
+                                    'reply_markup' => json_encode($keyboard),
+                                ]);
+                                return true;
+                            }
+                        }
+
+                        // Fast mode (or strict token retry).
+                        $regresult = \local_telegramotp\manager::verify_bot_token($token, (int)$chatid);
+                        if (!empty($regresult['success']) && !empty($regresult['user'])) {
+                            $user = $regresult['user'];
+                            $a = (object)[
+                                'name' => fullname($user),
+                                'site' => get_site()->fullname,
+                            ];
+                            $confirmation = get_string('telegram_welcome_verified', 'local_telegramotp', $a);
+                            $this->send_api_command('sendMessage', [
+                                'chat_id' => $chatid,
+                                'text' => $confirmation,
+                                'reply_markup' => json_encode(['remove_keyboard' => true]),
+                            ]);
+                            return true;
+                        } else {
+                            $msg = $regresult['message'] ?? get_string('error_invalid_request', 'local_telegramotp');
+                            $this->send_api_command('sendMessage', [
+                                'chat_id' => $chatid,
+                                'text' => $msg,
+                            ]);
+                            return false;
+                        }
+                    }
+
+                    // Match token to pending secret in user preferences for existing logged-in users.
                     $targetvalue = $this->secretprefix . $token;
                     $sql = "SELECT id, userid, name, value
                               FROM {user_preferences}
                              WHERE name = :name
-                               AND " . $DB->sql_compare_text('value', 255) . " = :value";
+                                AND " . $DB->sql_compare_text('value', 255) . " = :value";
                     $pref = $DB->get_record_sql($sql, [
                         'name' => 'message_processor_telegram_chatid',
                         'value' => $targetvalue,

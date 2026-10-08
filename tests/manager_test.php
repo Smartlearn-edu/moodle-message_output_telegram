@@ -194,4 +194,46 @@ final class manager_test extends advanced_testcase {
         $this->assertNotEmpty($found);
         $this->assertEquals($user->id, $found->id);
     }
+
+    /**
+     * Test processing /start reg_ token for local_telegramotp.
+     */
+    public function test_process_single_update_with_local_telegramotp_token(): void {
+        global $DB;
+        $this->resetAfterTest(true);
+
+        if (!class_exists('\local_telegramotp\manager')) {
+            $this->markTestSkipped('local_telegramotp not present in test environment.');
+        }
+
+        set_config('bot_username', 'MyTestBot', 'local_telegramotp');
+        set_config('bot_verification_security', 'fast', 'local_telegramotp');
+
+        $data = [
+            'firstname' => 'TestBot',
+            'lastname'  => 'User',
+            'email'     => 'botuser@example.com',
+            'password'  => 'Pass123!@#',
+            'phone'     => '+966503332211',
+        ];
+
+        $tokenres = \local_telegramotp\manager::create_bot_verification_token($data);
+        $token = $tokenres['token'];
+
+        $update = (object)[
+            'message' => (object)[
+                'chat' => (object)['id' => 77889900],
+                'text' => '/start ' . $token,
+            ],
+        ];
+
+        $manager = new manager();
+        $result = $manager->process_single_update($update);
+        $this->assertTrue($result);
+
+        // Check user was created and chat id linked.
+        $user = $DB->get_record('user', ['email' => 'botuser@example.com']);
+        $this->assertNotEmpty($user);
+        $this->assertEquals('77889900', get_user_preferences('message_processor_telegram_chatid', null, $user->id));
+    }
 }
