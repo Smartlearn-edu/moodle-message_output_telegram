@@ -24,39 +24,25 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+require_once(__DIR__ . '/../../../config.php');
+require_once($CFG->dirroot . '/message/lib.php');
+
 // If incoming request is a Telegram Webhook POST payload.
 if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     define('NO_DEBUG_DISPLAY', true);
-    require_once(__DIR__ . '/../../../config.php');
 
     $raw = file_get_contents('php://input');
     $data = json_decode($raw);
 
-    if (!empty($data) && isset($data->message->text) && isset($data->message->chat->id)) {
-        $text = trim($data->message->text);
-        if (strpos($text, '/start') === 0) {
-            $parts = preg_split('/\s+/', $text, 2);
-            $token = $parts[1] ?? '';
-            if (!empty($token)) {
-                $targetvalue = 'usersecret::' . $token;
-                $pref = $DB->get_record('user_preferences', [
-                    'name' => 'message_processor_telegram_chatid',
-                    'value' => $targetvalue,
-                ]);
-                if ($pref) {
-                    set_user_preference('message_processor_telegram_chatid', (string)$data->message->chat->id, (int)$pref->userid);
-                }
-            }
-        }
+    if (!empty($data) && is_object($data)) {
+        $manager = new \message_telegram\manager();
+        $manager->process_single_update($data);
     }
 
     header('Content-Type: application/json');
     echo json_encode(['ok' => true]);
     exit(0);
 }
-
-require_once(__DIR__ . '/../../../config.php');
-require_once($CFG->dirroot . '/message/lib.php');
 
 $action = optional_param('action', '', PARAM_ALPHANUMEXT);
 

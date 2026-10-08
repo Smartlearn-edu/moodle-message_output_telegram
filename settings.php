@@ -27,6 +27,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
+    global $DB;
+
     $telegrammanager = new message_telegram\manager();
 
     $sitebottoken = $telegrammanager->config('sitebottoken');
@@ -85,6 +87,25 @@ if ($ADMIN->fulltree) {
         get_string('configsitebotusername', 'message_telegram'),
         $botusername ?? '',
         PARAM_TEXT
+    ));
+
+    // Custom user profile field selector for Telegram phone number.
+    $customfields = $DB->get_records_menu('user_info_field', null, 'name ASC', 'shortname, name');
+    $fieldoptions = [
+        '' => get_string('usephonefields', 'message_telegram'),
+    ];
+    if (!empty($customfields)) {
+        foreach ($customfields as $shortname => $name) {
+            $fieldoptions[$shortname] = $name . ' (' . $shortname . ')';
+        }
+    }
+
+    $settings->add(new admin_setting_configselect(
+        'message_telegram/customphonefield',
+        get_string('customphonefield', 'message_telegram'),
+        get_string('configcustomphonefield', 'message_telegram'),
+        '',
+        $fieldoptions
     ));
 
     if (!empty($sitebottoken)) {

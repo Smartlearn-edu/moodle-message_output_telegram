@@ -62,7 +62,7 @@ class manager {
             return true;
         }
 
-        $chatid = get_user_preferences('message_processor_telegram_chatid', '', $userid);
+        $chatid = $this->resolve_user_chatid($userid);
         if (empty($chatid) || strpos($chatid, $this->secretprefix) === 0) {
             return true;
         }
@@ -119,6 +119,30 @@ class manager {
     }
 
     /**
+     * Resolve the Telegram Chat ID for a user, checking preferences and custom profile fields.
+     *
+     * @param int $userid The user ID.
+     * @return string The resolved chat ID or empty string.
+     */
+    public function resolve_user_chatid(int $userid): string {
+        $chatid = (string)get_user_preferences('message_processor_telegram_chatid', '', $userid);
+        if (!empty($chatid) && strpos($chatid, $this->secretprefix) !== 0) {
+            return $chatid;
+        }
+
+        // Check if custom profile field contains a direct numeric chat ID.
+        $customfield = $this->config('customphonefield');
+        if (!empty($customfield)) {
+            $fieldvalue = $this->get_user_custom_field_value($userid, $customfield);
+            if (!empty($fieldvalue) && preg_match('/^-?\d+$/', trim($fieldvalue))) {
+                return trim($fieldvalue);
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Set the config item to the specified value in the object and database.
      *
      * @param string $name The name of the config item.
@@ -151,8 +175,6 @@ class manager {
      * @return string The HTML for the form.
      */
     public function config_form($preferences, int $userid): string {
-        global $OUTPUT;
-
         $html = '';
 
         if (!$this->is_chatid_set($userid, $preferences)) {
@@ -323,6 +345,288 @@ class manager {
     }
 
     /**
+     * Normalize a phone number to digits only.
+     *
+     * @param string $phone The input phone number.
+     * @return string Digits-only phone string.
+     */
+    public function normalize_phone(string $phone): string {
+        return preg_replace('/\D+/', '', $phone) ?? '';
+    }
+
+    /**
+     * Compare two phone numbers to verify if they match, taking into account local prefixes.
+     *
+     * @param string $phone1 First phone number.
+     * @param string $phone2 Second phone number.
+     * @return bool True if matching.
+     */
+    public function match_phone_numbers(string $phone1, string $phone2): bool {
+        $clean1 = $this->normalize_phone($phone1);
+        $clean2 = $this->normalize_phone($phone2);
+
+        if (empty($clean1) || empty($clean2)) {
+            return false;
+        }
+
+        if ($clean1 === $clean2) {
+            return true;
+        }
+
+        // Compare the last 9 digits (handles country code differences, e.g., +2010... vs 010...).
+        $len1 = strlen($clean1);
+        $len2 = strlen($clean2);
+        $minlen = min($len1, $len2, 9);
+
+        if ($minlen >= 7) {
+            $sub1 = substr($clean1, -$minlen);
+            $sub2 = substr($clean2, -$minlen);
+            return ($sub1 === $sub2);
+        }
+
+        return false;
+    }
+
+    /**
+     * Get a user's value for a custom profile field.
+     *
+     * @param int $userid The user ID.
+     * @param string $shortname The custom field shortname.
+     * @return string The field data or empty string.
+     */
+    public function get_user_custom_field_value(int $userid, string $shortname): string {
+        global $DB;
+
+        $sql = "SELECT d.data
+                  FROM {user_info_data} d
+                  JOIN {user_info_field} f ON d.fieldid = f.id
+                 WHERE f.shortname = :shortname AND d.userid = :userid";
+        $record = $DB->get_record_sql($sql, ['shortname' => $shortname, 'userid' => $userid]);
+        return $record ? trim((string)$record->data) : '';
+    }
+
+    /**
+     * Find a Moodle user matching a given phone number.
+     *
+     * @param string $phone The phone number to search for.
+     * @return \stdClass|null The user record or null if not found.
+     */
+    public function find_user_by_phone(string $phone): ?\stdClass {
+        global $DB;
+
+        $target = $this->normalize_phone($phone);
+        if (empty($target) || strlen($target) < 6) {
+            return null;
+        }
+
+        // 1. Check configured custom profile field first.
+        $customfield = $this->config('customphonefield');
+        if (!empty($customfield)) {
+            $sql = "SELECT d.userid, d.data
+                      FROM {user_info_data} d
+                      JOIN {user_info_field} f ON d.fieldid = f.id
+                      JOIN {user} u ON d.userid = u.id
+                     WHERE f.shortname = :shortname AND u.deleted = 0";
+            $records = $DB->get_records_sql($sql, ['shortname' => $customfield]);
+            foreach ($records as $record) {
+                if ($this->match_phone_numbers($phone, (string)$record->data)) {
+                    return $DB->get_record('user', ['id' => $record->userid, 'deleted' => 0]);
+                }
+            }
+        }
+
+        // 2. Check standard phone fields (phone2 / phone1).
+        $candidates = $DB->get_records_select(
+            'user',
+            "deleted = 0 AND (phone1 IS NOT NULL AND phone1 <> '' OR phone2 IS NOT NULL AND phone2 <> '')",
+            null,
+            'id ASC',
+            'id, phone1, phone2, firstname, lastname, email, auth, suspended'
+        );
+
+        foreach ($candidates as $candidate) {
+            if (!empty($candidate->phone2) && $this->match_phone_numbers($phone, $candidate->phone2)) {
+                return $candidate;
+            }
+            if (!empty($candidate->phone1) && $this->match_phone_numbers($phone, $candidate->phone1)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Send a prompt to Telegram asking the user to share their phone number contact.
+     *
+     * @param int|string $chatid The recipient chat ID.
+     * @return bool True on success.
+     */
+    public function send_contact_prompt($chatid): bool {
+        $sitename = get_site()->fullname;
+        $prompt = get_string('promptsharephone', 'message_telegram', s($sitename));
+
+        $keyboard = [
+            'keyboard' => [
+                [
+                    [
+                        'text' => '📱 ' . get_string('sharephone', 'message_telegram'),
+                        'request_contact' => true,
+                    ],
+                ],
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ];
+
+        $params = [
+            'chat_id' => $chatid,
+            'text' => $prompt,
+            'reply_markup' => json_encode($keyboard),
+        ];
+
+        $response = $this->send_api_command('sendMessage', $params);
+        return !empty($response->ok);
+    }
+
+    /**
+     * Process a single update object received from Telegram.
+     *
+     * @param object $object The update object.
+     * @return bool True if an account was linked or handled.
+     */
+    public function process_single_update(object $object): bool {
+        global $DB;
+
+        if (!isset($object->message)) {
+            return false;
+        }
+
+        $message = $object->message;
+        $chatid = $message->chat->id ?? null;
+        if (empty($chatid)) {
+            return false;
+        }
+
+        // 1. User shared contact (Phone Number auto-link).
+        if (isset($message->contact) && isset($message->contact->phone_number)) {
+            $phone = (string)$message->contact->phone_number;
+            $user = $this->find_user_by_phone($phone);
+
+            if ($user) {
+                set_user_preference('message_processor_telegram_chatid', (string)$chatid, $user->id);
+
+                $a = (object)[
+                    'name' => fullname($user),
+                    'site' => get_site()->fullname,
+                ];
+                $confirmation = get_string('welcomelinked', 'message_telegram', $a);
+
+                $this->send_api_command('sendMessage', [
+                    'chat_id' => $chatid,
+                    'text' => $confirmation,
+                    'reply_markup' => json_encode(['remove_keyboard' => true]),
+                ]);
+
+                return true;
+            } else {
+                $a = (object)[
+                    'phone' => $phone,
+                    'site' => get_site()->fullname,
+                ];
+                $notfound = get_string('phonenotfound', 'message_telegram', $a);
+
+                $this->send_api_command('sendMessage', [
+                    'chat_id' => $chatid,
+                    'text' => $notfound,
+                ]);
+
+                return false;
+            }
+        }
+
+        // 2. User sent text message.
+        if (isset($message->text)) {
+            $text = trim($message->text);
+
+            if (strpos($text, '/start') === 0) {
+                $parts = preg_split('/\s+/', $text, 2);
+                $token = $parts[1] ?? '';
+
+                if (!empty($token)) {
+                    // Match token to pending secret in user preferences.
+                    $targetvalue = $this->secretprefix . $token;
+                    $pref = $DB->get_record('user_preferences', [
+                        'name' => 'message_processor_telegram_chatid',
+                        'value' => $targetvalue,
+                    ]);
+
+                    if ($pref) {
+                        $user = $DB->get_record('user', ['id' => $pref->userid, 'deleted' => 0]);
+                        if ($user) {
+                            set_user_preference('message_processor_telegram_chatid', (string)$chatid, (int)$pref->userid);
+
+                            $a = (object)[
+                                'name' => fullname($user),
+                                'site' => get_site()->fullname,
+                            ];
+                            $this->send_api_command('sendMessage', [
+                                'chat_id' => $chatid,
+                                'text' => get_string('welcomelinked', 'message_telegram', $a),
+                                'reply_markup' => json_encode(['remove_keyboard' => true]),
+                            ]);
+                            return true;
+                        }
+                    }
+                }
+
+                // If plain /start, send the contact request prompt.
+                $this->send_contact_prompt($chatid);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Process all pending updates from getUpdates and acknowledge them.
+     *
+     * @return int Number of updates processed.
+     */
+    public function process_all_pending_updates(): int {
+        if (empty($this->config('sitebottoken')) || !empty($this->config('webhook'))) {
+            return 0;
+        }
+
+        $results = $this->get_updates();
+        if ($results === false || !is_array($results) || empty($results)) {
+            return 0;
+        }
+
+        $processed = 0;
+        $maxupdateid = 0;
+
+        foreach ($results as $object) {
+            if (isset($object->update_id)) {
+                $maxupdateid = max($maxupdateid, (int)$object->update_id);
+            }
+            if ($this->process_single_update($object)) {
+                $processed++;
+            }
+        }
+
+        if ($maxupdateid > 0) {
+            $this->send_api_command('getUpdates', [
+                'offset' => $maxupdateid + 1,
+                'limit' => 1,
+            ]);
+        }
+
+        return $processed;
+    }
+
+    /**
      * Check Telegram getUpdates to locate a matching /start command for this user.
      *
      * @param int|null $userid The id of the user in question.
@@ -339,35 +643,9 @@ class manager {
             return false;
         }
 
-        $results = $this->get_updates();
-        if ($results === false || !is_array($results)) {
-            return false;
-        }
+        $this->process_all_pending_updates();
 
-        foreach ($results as $object) {
-            if (!isset($object->message) || !isset($object->message->text) || !isset($object->message->chat->id)) {
-                continue;
-            }
-
-            $text = trim($object->message->text);
-            if (strpos($text, '/start') === 0) {
-                $parts = preg_split('/\s+/', $text, 2);
-                $receivedsecret = $parts[1] ?? '';
-                if (!empty($receivedsecret) && $this->usersecret_match($receivedsecret, $userid)) {
-                    set_user_preference('message_processor_telegram_chatid', (string)$object->message->chat->id, $userid);
-                    // Acknowledge update to avoid processing again.
-                    if (isset($object->update_id)) {
-                        $this->send_api_command('getUpdates', [
-                            'offset' => $object->update_id + 1,
-                            'limit' => 1,
-                        ]);
-                    }
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return $this->is_chatid_set($userid);
     }
 
     /**

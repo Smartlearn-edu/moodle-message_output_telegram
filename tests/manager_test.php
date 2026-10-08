@@ -89,4 +89,19 @@ final class manager_test extends advanced_testcase {
 
         $this->assertStringStartsWith('https://t.me/MyTestBot?start=', $url);
     }
+
+    /**
+     * Test phone normalization and matching.
+     */
+    public function test_phone_normalization_and_matching(): void {
+        $manager = new manager();
+
+        $this->assertEquals('201005822858', $manager->normalize_phone('+20 10 0582 2858'));
+        $this->assertEquals('01005822858', $manager->normalize_phone('010-0582-2858'));
+
+        // Matching international vs local formats.
+        $this->assertTrue($manager->match_phone_numbers('+20 10 0582 2858', '01005822858'));
+        $this->assertTrue($manager->match_phone_numbers('201005822858', '+201005822858'));
+        $this->assertFalse($manager->match_phone_numbers('+201005822858', '01123456789'));
+    }
 }
