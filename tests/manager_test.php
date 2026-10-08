@@ -104,4 +104,26 @@ final class manager_test extends advanced_testcase {
         $this->assertTrue($manager->match_phone_numbers('201005822858', '+201005822858'));
         $this->assertFalse($manager->match_phone_numbers('+201005822858', '01123456789'));
     }
+
+    /**
+     * Test processing /start with token update links account.
+     */
+    public function test_process_single_update_start_token(): void {
+        $user = $this->getDataGenerator()->create_user();
+        $manager = new manager();
+
+        $token = $manager->get_or_create_usersecret((int)$user->id);
+        $this->assertNotEmpty($token);
+
+        $update = (object)[
+            'message' => (object)[
+                'chat' => (object)['id' => 987654321],
+                'text' => '/start ' . $token,
+            ],
+        ];
+
+        $result = $manager->process_single_update($update);
+        $this->assertTrue($result);
+        $this->assertEquals('987654321', $manager->get_user_chatid((int)$user->id));
+    }
 }

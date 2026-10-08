@@ -538,7 +538,11 @@ class manager {
                 if (!empty($token)) {
                     // Match token to pending secret in user preferences.
                     $targetvalue = $this->secretprefix . $token;
-                    $pref = $DB->get_record('user_preferences', [
+                    $sql = "SELECT id, userid, name, value
+                              FROM {user_preferences}
+                             WHERE name = :name
+                               AND " . $DB->sql_compare_text('value', 255) . " = :value";
+                    $pref = $DB->get_record_sql($sql, [
                         'name' => 'message_processor_telegram_chatid',
                         'value' => $targetvalue,
                     ]);
