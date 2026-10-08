@@ -1,12 +1,18 @@
 Release Notes
 
+Version 5.3.0 (Build - 2026042000)
+- Full modernization for Moodle 5.3 and PHP 8.2 - 8.4+.
+- Implemented Moodle Privacy API (\privacy\provider) for GDPR compliance.
+- Hardened security: decoupled account connection from sesskey, using secure 32-character random tokens.
+- Masked site bot token input using admin_setting_configpasswordunmask.
+- Added support for Telegram HTML message formatting and direct "Open in Moodle" action links.
+- Added message length boundary enforcement to prevent Telegram 4096-character delivery errors.
+- Modernized user preferences UI with Bootstrap 5.3 / Boost theme styling.
+- Added optional manual Chat ID configuration for users and administrators.
+- Added optional working Telegram Webhook receiver endpoint.
+- Added automated PHPUnit test suite.
+- Replaced legacy telegram.me links with modern t.me links.
+- Fixed all PHPCS and Moodle CodeChecker compliance issues.
+
 Version 3.2.5 (Build - 2017071200)
-Releases as stable.
-
-Version BETA 3.2.4 (Build - 2017052600)
-Improvements:
-Significant improvements to the setup process, with documentation at https://docs.moodle.org/33/en/Telegram_message_processor.
-
-Version BETA 3.2.3 (Build - 2017051900)
-Improvements:
-Added the ability to configure the new bot at the site level, so users only need to configure their chat id. Made that the default.
+- Released as stable for Moodle 3.2.

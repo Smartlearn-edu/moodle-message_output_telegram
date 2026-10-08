@@ -15,24 +15,26 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Telegram message processor installation code.
+ * Installation code for the Telegram message processor.
  *
- * @package message_telegram
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
 
 /**
- * Install the Telegram message processor.
+ * Add the records for Telegram message processor.
+ *
+ * @return bool True on success.
  */
-function xmldb_message_telegram_install() {
+function xmldb_message_telegram_install(): bool {
     global $DB;
-    $result = true;
+
     $provider = new stdClass();
-    $provider->name  = 'telegram';
+    $provider->name = 'telegram';
     $DB->insert_record('message_processors', $provider);
-    return $result;
+
+    return true;
 }

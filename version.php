@@ -17,18 +17,17 @@
 /**
  * Telegram message plugin version information.
  *
- * @package message_telegram
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2017040405;  // The current module version (Date: YYYYMMDDXX)
-$plugin->requires = 2016111500; // Moodle version.
-
-$plugin->component = 'message_telegram';
-
-$plugin->release  = '3.2.5 (Build - 2017071200)';
-$plugin->maturity  = MATURITY_STABLE;
+$plugin->version   = 2026042000;        // The current module version (Date: YYYYMMDDXX).
+$plugin->requires  = 2024100700;        // Requires Moodle 4.5+ or 5.0+.
+$plugin->component = 'message_telegram'; // Full name of the plugin.
+$plugin->maturity  = MATURITY_STABLE;   // Stable plugin maturity.
+$plugin->release   = '5.3.0';           // Human-friendly release label.

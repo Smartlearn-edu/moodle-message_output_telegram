@@ -17,13 +17,14 @@
 /**
  * Telegram message plugin settings.
  *
- * @package message_telegram
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die;
+defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
     $telegrammanager = new message_telegram\manager();
@@ -34,13 +35,14 @@ if ($ADMIN->fulltree) {
 
     if (!empty($sitebottoken)) {
         $telegrammanager->update_bot_info();
+        $botname = $telegrammanager->config('sitebotname');
+        $botusername = $telegrammanager->config('sitebotusername');
     }
 
-    $telegrammanager = new message_telegram\manager();
     if (empty($sitebottoken)) {
         $site = get_site();
         $uniquename = $site->fullname . ' ' . get_string('notifications');
-        $sitehostname = parse_url($CFG->wwwroot, PHP_URL_HOST);
+        $sitehostname = parse_url($CFG->wwwroot, PHP_URL_HOST) ?: 'moodle';
         $lastdot = strrpos($sitehostname, '.');
         if ($lastdot !== false) {
             $sitehostname = substr($sitehostname, 0, $lastdot);
@@ -51,11 +53,10 @@ if ($ADMIN->fulltree) {
         } else {
             $botusername = str_replace('.', '', $botusername);
         }
-        // The username cannot be longer than 32 characters total, and must end in "bot".
-        $botusername = substr($botusername, 0, 29) . 'Bot';
+        $botusername = substr($botusername, 0, 28) . 'Bot';
 
-        $url = 'https://telegram.me/botfather';
-        $link = '<p><a href="'.$url.'" target="_blank">'.$url.'</a></p>';
+        $url = 'https://t.me/botfather';
+        $link = html_writer::tag('p', html_writer::link($url, $url, ['target' => '_blank', 'rel' => 'noopener noreferrer']));
         $a = new stdClass();
         $a->name = $uniquename;
         $a->username = $botusername;
@@ -63,15 +64,40 @@ if ($ADMIN->fulltree) {
         $settings->add(new admin_setting_heading('setuptelegram', '', $text . $link));
     }
 
-    $settings->add(new admin_setting_configtext('message_telegram/sitebottoken', get_string('sitebottoken', 'message_telegram'),
-        get_string('configsitebottoken', 'message_telegram'), $sitebottoken, PARAM_TEXT));
-    $settings->add(new admin_setting_configtext('message_telegram/sitebotname', get_string('sitebotname', 'message_telegram'),
-        get_string('configsitebotname', 'message_telegram'), $botname, PARAM_TEXT));
-    $settings->add(new admin_setting_configtext('message_telegram/sitebotusername',
-        get_string('sitebotusername', 'message_telegram'),
-        get_string('configsitebotusername', 'message_telegram'), $botusername, PARAM_TEXT));
+    $settings->add(new admin_setting_configpasswordunmask(
+        'message_telegram/sitebottoken',
+        get_string('sitebottoken', 'message_telegram'),
+        get_string('configsitebottoken', 'message_telegram'),
+        ''
+    ));
 
-    $url = new moodle_url('/message/output/telegram/telegramconnect.php', ['sesskey' => sesskey(), 'action' => 'setwebhook']);
-    $link = html_writer::link($url, get_string('setwebhook', 'message_telegram'));
-    $settings->add(new admin_setting_heading('setwebhook', '', $link));
+    $settings->add(new admin_setting_configtext(
+        'message_telegram/sitebotname',
+        get_string('sitebotname', 'message_telegram'),
+        get_string('configsitebotname', 'message_telegram'),
+        $botname ?? '',
+        PARAM_TEXT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'message_telegram/sitebotusername',
+        get_string('sitebotusername', 'message_telegram'),
+        get_string('configsitebotusername', 'message_telegram'),
+        $botusername ?? '',
+        PARAM_TEXT
+    ));
+
+    if (!empty($sitebottoken)) {
+        $iswebhook = !empty($telegrammanager->config('webhook'));
+        $action = $iswebhook ? 'unsetwebhook' : 'setwebhook';
+        $label = $iswebhook ? get_string('unsetwebhook', 'message_telegram') : get_string('setwebhook', 'message_telegram');
+        $url = new moodle_url('/message/output/telegram/telegramconnect.php', [
+            'sesskey' => sesskey(),
+            'action' => $action,
+        ]);
+        $link = html_writer::link($url, $label, [
+            'class' => $iswebhook ? 'btn btn-outline-warning btn-sm' : 'btn btn-outline-primary btn-sm',
+        ]);
+        $settings->add(new admin_setting_heading('setwebhook', '', $link));
+    }
 }

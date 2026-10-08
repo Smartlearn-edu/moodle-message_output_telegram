@@ -14,204 +14,321 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Telegram message plugin version information.
- *
- * @package message_telegram
- * @author  Mike Churchward
- * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
-
 namespace message_telegram;
 
-defined('MOODLE_INTERNAL') || die();
-require_once($CFG->dirroot.'/lib/filelib.php');
-
 /**
- * Telegram helper manager class
+ * Telegram helper manager class.
  *
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class manager {
-
     /**
-     * @var $secretprefix A variable used to identify that chatid had not been set for the user.
+     * @var \stdClass Plugin configuration object.
      */
-    private $secretprefix = 'usersecret::';
+    protected $config;
 
     /**
-     * @var $curl The curl object used in this run. Avoids continuous creation of a curl object.
+     * @var string Prefix used to identify temporary pending user connection tokens.
      */
-    private $curl = null;
+    protected $secretprefix = 'usersecret::';
 
     /**
-     * Constructor. Loads all needed data.
+     * @var \curl|null The curl instance for HTTP communication.
+     */
+    protected $curl = null;
+
+    /**
+     * Constructor. Loads plugin configuration.
      */
     public function __construct() {
         $this->config = get_config('message_telegram');
     }
 
     /**
-     * Send the message to Telegram.
-     * @param string $message The message contect to send to Slack.
-     * @param int $userid The Moodle user id that is being sent to.
+     * Send a notification message to Telegram.
+     *
+     * @param string $message The message text to send.
+     * @param int $userid The Moodle user id being sent to.
+     * @param string $subject Optional message subject.
+     * @param string $contexturl Optional URL for action link.
+     * @return bool True on success, false on failure.
      */
-    public function send_message($message, $userid) {
-
+    public function send_message(string $message, int $userid, string $subject = '', string $contexturl = ''): bool {
         if (empty($this->config('sitebottoken'))) {
-            return true;
-        } else if (empty($chatid = get_user_preferences('message_processor_telegram_chatid', '', $userid))) {
             return true;
         }
 
-        $response = $this->send_api_command('sendMessage', ['chat_id' => $chatid, 'text' => $message]);
-        return (!empty($response) && isset($response->ok) && ($response->ok == true));
+        $chatid = get_user_preferences('message_processor_telegram_chatid', '', $userid);
+        if (empty($chatid) || strpos($chatid, $this->secretprefix) === 0) {
+            return true;
+        }
+
+        $formattedtext = '';
+        if (!empty($subject)) {
+            $formattedtext .= '<b>' . htmlspecialchars($subject, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . "</b>\n\n";
+        }
+
+        $cleanmessage = strip_tags($message, '<b><i><a><code><pre>');
+        $formattedtext .= trim($cleanmessage);
+
+        if (!empty($contexturl)) {
+            $formattedtext .= "\n\n<a href=\"" . s($contexturl) . '">' .
+                get_string('openinmoodle', 'message_telegram') . '</a>';
+        }
+
+        // Enforce Telegram message length limit (4096 characters).
+        if (mb_strlen($formattedtext, 'UTF-8') > 4000) {
+            $formattedtext = mb_substr($formattedtext, 0, 3950, 'UTF-8') . '...';
+            if (!empty($contexturl)) {
+                $formattedtext .= "\n\n<a href=\"" . s($contexturl) . '">' .
+                    get_string('openinmoodle', 'message_telegram') . '</a>';
+            }
+        }
+
+        $params = [
+            'chat_id' => $chatid,
+            'text' => $formattedtext,
+            'parse_mode' => 'HTML',
+            'disable_web_page_preview' => 'true',
+        ];
+
+        $response = $this->send_api_command('sendMessage', $params);
+
+        // Fallback to plain text if HTML tags failed to parse.
+        if (
+            empty($response->ok) && !empty($response->description) &&
+                strpos($response->description, 'can\'t parse entities') !== false
+        ) {
+            $plain = (!empty($subject) ? $subject . "\n\n" : '') . strip_tags($message);
+            if (!empty($contexturl)) {
+                $plain .= "\n\n" . $contexturl;
+            }
+            if (mb_strlen($plain, 'UTF-8') > 4000) {
+                $plain = mb_substr($plain, 0, 3950, 'UTF-8') . '...';
+            }
+            $params['text'] = $plain;
+            unset($params['parse_mode']);
+            $response = $this->send_api_command('sendMessage', $params);
+        }
+
+        return !empty($response->ok);
     }
 
     /**
-     * Set the config item to the specified value, in the object and the database.
+     * Set the config item to the specified value in the object and database.
+     *
      * @param string $name The name of the config item.
-     * @param string $value The value of the config item.
+     * @param mixed $value The value of the config item.
+     * @return void
      */
-    public function set_config($name, $value) {
+    public function set_config(string $name, $value): void {
         set_config($name, $value, 'message_telegram');
+        if (!is_object($this->config)) {
+            $this->config = new \stdClass();
+        }
         $this->config->{$name} = $value;
     }
+
     /**
-     * Return the requested configuration item or null. Should have been loaded in the constructor.
+     * Return the requested configuration item or null.
+     *
      * @param string $configitem The requested configuration item.
      * @return mixed The requested value or null.
      */
-    public function config($configitem) {
-        return isset($this->config->{$configitem}) ? $this->config->{$configitem} : null;
+    public function config(string $configitem) {
+        return $this->config->{$configitem} ?? null;
     }
 
     /**
      * Return the HTML for the user preferences form.
-     * @param array $preferences An array of user preferences.
+     *
+     * @param object $preferences An object of user preferences.
      * @param int $userid Moodle id of the user in question.
      * @return string The HTML for the form.
      */
-    public function config_form ($preferences, $userid) {
-        // If the chatid is not set, display the link to do this.
+    public function config_form($preferences, int $userid): string {
+        global $OUTPUT;
+
+        $html = '';
+
         if (!$this->is_chatid_set($userid, $preferences)) {
-            // Temporarily set the user's chatid to the sesskey value for security.
-            $this->set_usersecret($userid);
-            $url = 'https://telegram.me/'.$this->config('sitebotusername').'?start='.$this->usersecret();
-            $configbutton = get_string('connectinstructions', 'message_telegram', $this->config('sitebotname'));
-            $configbutton .= '<div align="center"><a href="'.$url.'" target="_blank">'.
-                get_string('connectme', 'message_telegram') . '</a></div>';
+            $connecturl = $this->get_connect_url($userid);
+            $botname = $this->config('sitebotname') ?: get_string('pluginname', 'message_telegram');
+
+            $html .= '<div class="alert alert-info py-2 my-2">';
+            $html .= get_string('connectinstructions', 'message_telegram', s($botname));
+            $html .= '</div>';
+
+            if (!empty($connecturl)) {
+                $html .= '<div class="text-center my-3">';
+                $html .= '<a href="' . s($connecturl) . '" class="btn btn-primary" target="_blank" rel="noopener noreferrer">';
+                $html .= '<i class="fa fa-telegram mr-1" aria-hidden="true"></i> ';
+                $html .= get_string('connectme', 'message_telegram');
+                $html .= '</a>';
+                $html .= '</div>';
+            }
+
+            $html .= '<hr class="my-3"/>';
+            $html .= '<div class="form-group row">';
+            $html .= '<label for="telegram_manual_chatid" class="col-form-label col-md-5 font-weight-bold">';
+            $html .= get_string('manualchatid', 'message_telegram');
+            $html .= '</label>';
+            $html .= '<div class="col-md-7">';
+            $html .= '<input type="text" id="telegram_manual_chatid" name="telegram_manual_chatid" class="form-control" ';
+            $html .= 'placeholder="e.g. 123456789" />';
+            $html .= '<small class="form-text text-muted">';
+            $html .= get_string('manualchatid_help', 'message_telegram');
+            $html .= '</small>';
+            $html .= '</div></div>';
         } else {
-            $url = new \moodle_url($this->redirect_uri(), ['action' => 'removechatid', 'userid' => $userid,
-                'sesskey' => sesskey()]);
-            $configbutton = '<a href="'.$url.'">' . get_string('removetelegram', 'message_telegram') . '</a>';
+            $chatid = $this->get_user_chatid($userid, $preferences);
+            $disconnecturl = new \moodle_url($this->redirect_uri(), [
+                'action' => 'removechatid',
+                'userid' => $userid,
+                'sesskey' => sesskey(),
+            ]);
+
+            $html .= '<div class="alert alert-success d-flex align-items-center justify-content-between py-2 my-2">';
+            $html .= '<div><strong>' . get_string('connectedas', 'message_telegram', s($chatid)) . '</strong></div>';
+            $html .= '<a href="' . $disconnecturl . '" class="btn btn-outline-danger btn-sm">';
+            $html .= get_string('removetelegram', 'message_telegram');
+            $html .= '</a>';
+            $html .= '</div>';
         }
 
-        return $configbutton;
+        return $html;
     }
 
     /**
-     * Construct a variable used only by the plugin to help ensure user identity.
-     * @return string A constructed variable for this user (Moodle's sesskey).
+     * Generate or return a secure connection token for linking Telegram to the user.
+     *
+     * @param int|null $userid The user id.
+     * @return string The generated connection token.
      */
-    public function usersecret() {
-        return sesskey();
-    }
-
-    /**
-     * Set the user's chat id to the usersecret to allow for secure chat id identification.
-     * @param int $userid The id of the user to set this for.
-     * @return boolean Success or failure.
-     */
-    private function set_usersecret($userid = null) {
+    public function get_or_create_usersecret(?int $userid = null): string {
         global $USER;
 
         if ($userid === null) {
             $userid = $USER->id;
         }
 
-        if ($userid != $USER->id) {
-            require_capability('moodle/site:config', \context_system::instance());
+        $existing = get_user_preferences('message_processor_telegram_chatid', '', $userid);
+        if (!empty($existing) && strpos($existing, $this->secretprefix) === 0) {
+            $token = substr($existing, strlen($this->secretprefix));
+            if (!empty($token)) {
+                return $token;
+            }
         }
 
-        return set_user_preference('message_processor_telegram_chatid', $this->secretprefix . $this->usersecret(), $userid);
+        $token = random_string(32);
+        set_user_preference('message_processor_telegram_chatid', $this->secretprefix . $token, $userid);
+        return $token;
     }
 
     /**
-     * Check that the received usersecret matches the user's usersecret stored in the database.
+     * Check if a received secret matches the pending token stored for the user.
+     *
      * @param string $receivedsecret The secret to test against the stored one.
-     * @param int $userid The id of the user to set this for.
-     * @return boolean Success or failure.
+     * @param int|null $userid The id of the user to test.
+     * @return bool True on match, false otherwise.
      */
-    private function usersecret_match($receivedsecret, $userid = null) {
+    public function usersecret_match(string $receivedsecret, ?int $userid = null): bool {
         global $USER;
 
         if ($userid === null) {
             $userid = $USER->id;
         }
 
-        if ($userid != $USER->id) {
-            require_capability('moodle/site:config', \context_system::instance());
+        $stored = get_user_preferences('message_processor_telegram_chatid', '', $userid);
+        if (strpos($stored, $this->secretprefix) !== 0) {
+            return false;
         }
 
-        $usersecret = substr(get_user_preferences('message_processor_telegram_chatid', '', $userid), strlen($this->secretprefix));
-        return ($usersecret === $receivedsecret);
+        $token = substr($stored, strlen($this->secretprefix));
+        return !empty($token) && hash_equals($token, trim($receivedsecret));
     }
 
     /**
-     * Verify that a user has their chat id set.
+     * Verify whether a user has a valid Telegram chat id configured.
+     *
      * @param int $userid The id of the user to check.
-     * @param object $preferences Contains the Telegram user preferences for the user, if present.
-     * @return boolean True if the id is set.
+     * @param object|null $preferences Optional user preferences object.
+     * @return bool True if configured.
      */
-    public function is_chatid_set($userid, $preferences = null) {
-        if ($preferences === null) {
-            $preferences = new \stdClass();
-        }
-        if (!isset($preferences->telegram_chatid)) {
-            $preferences->telegram_chatid = get_user_preferences('message_processor_telegram_chatid', '', $userid);
-        }
-        return (!empty($preferences->telegram_chatid) && (strpos($preferences->telegram_chatid, $this->secretprefix) !== 0));
+    public function is_chatid_set(int $userid, $preferences = null): bool {
+        $chatid = $this->get_user_chatid($userid, $preferences);
+        return !empty($chatid) && (strpos($chatid, $this->secretprefix) !== 0);
     }
 
     /**
-     * Return the redirect URI to handle the callback for OAuth.
-     * @return string The URI.
+     * Retrieve the stored chat id or pending secret for the user.
+     *
+     * @param int $userid The user ID.
+     * @param object|null $preferences Optional user preferences.
+     * @return string The stored preference value.
      */
-    public function redirect_uri() {
+    public function get_user_chatid(int $userid, $preferences = null): string {
+        if ($preferences !== null && isset($preferences->telegram_chatid)) {
+            return (string)$preferences->telegram_chatid;
+        }
+        return (string)get_user_preferences('message_processor_telegram_chatid', '', $userid);
+    }
+
+    /**
+     * Construct the Telegram deep link for account connection.
+     *
+     * @param int|null $userid The user ID.
+     * @return string The Telegram URL.
+     */
+    public function get_connect_url(?int $userid = null): string {
+        $botusername = $this->config('sitebotusername');
+        if (empty($botusername)) {
+            return '';
+        }
+        $token = $this->get_or_create_usersecret($userid);
+        return 'https://t.me/' . urlencode($botusername) . '?start=' . urlencode($token);
+    }
+
+    /**
+     * Return the redirect URI to handle callbacks and links.
+     *
+     * @return string The URL.
+     */
+    public function redirect_uri(): string {
         global $CFG;
-
-        return $CFG->wwwroot.'/message/output/telegram/telegramconnect.php';
+        return $CFG->wwwroot . '/message/output/telegram/telegramconnect.php';
     }
 
     /**
-     * Given a valid bot token, get the name and username of the bot.
+     * Given a valid bot token, query Telegram and cache the bot name and username.
+     *
+     * @return bool True on success, false on failure.
      */
-    public function update_bot_info() {
+    public function update_bot_info(): bool {
         if (empty($this->config('sitebottoken'))) {
             return false;
-        } else {
-            $response = $this->send_api_command('getMe');
-            if ($response->ok) {
-                $this->set_config('sitebotname', $response->result->first_name);
-                $this->set_config('sitebotusername', $response->result->username);
-                return true;
-            } else {
-                return false;
-            }
         }
+
+        $response = $this->send_api_command('getMe');
+        if (!empty($response->ok) && !empty($response->result)) {
+            $this->set_config('sitebotname', $response->result->first_name ?? '');
+            $this->set_config('sitebotusername', $response->result->username ?? '');
+            return true;
+        }
+        return false;
     }
 
     /**
-     * Get the latest information from the Slack bot, and see if the user has initiated a connection.
-     * Only needed if no webHook has been created.
-     * @param int $userid The id of the user in question.
-     * @return boolean Success.
+     * Check Telegram getUpdates to locate a matching /start command for this user.
+     *
+     * @param int|null $userid The id of the user in question.
+     * @return bool True if connected, false otherwise.
      */
-    public function set_chatid($userid = null) {
+    public function set_chatid(?int $userid = null): bool {
         global $USER;
 
         if ($userid === null) {
@@ -220,90 +337,154 @@ class manager {
 
         if (empty($this->config('sitebottoken'))) {
             return false;
-        } else {
-            $results = $this->get_updates();
-            if ($results !== false) {
-                foreach ($results as $object) {
-                    if (isset($object->message)) {
-                        if ($this->usersecret_match(substr($object->message->text, strlen('/start ')))) {
-                            set_user_preference('message_processor_telegram_chatid', $object->message->chat->id, $userid);
-                            break;
-                        }
+        }
+
+        $results = $this->get_updates();
+        if ($results === false || !is_array($results)) {
+            return false;
+        }
+
+        foreach ($results as $object) {
+            if (!isset($object->message) || !isset($object->message->text) || !isset($object->message->chat->id)) {
+                continue;
+            }
+
+            $text = trim($object->message->text);
+            if (strpos($text, '/start') === 0) {
+                $parts = preg_split('/\s+/', $text, 2);
+                $receivedsecret = $parts[1] ?? '';
+                if (!empty($receivedsecret) && $this->usersecret_match($receivedsecret, $userid)) {
+                    set_user_preference('message_processor_telegram_chatid', (string)$object->message->chat->id, $userid);
+                    // Acknowledge update to avoid processing again.
+                    if (isset($object->update_id)) {
+                        $this->send_api_command('getUpdates', [
+                            'offset' => $object->update_id + 1,
+                            'limit' => 1,
+                        ]);
                     }
+                    return true;
                 }
-                return true;
-            } else {
-                return false;
             }
         }
+
+        return false;
     }
 
     /**
-     * Remove the user's Telegram chat id from the preferences.
-     * @param int $userid The id to be cleared.
-     * @return string Any information message.
+     * Set a chat ID directly entered by a user or administrator.
+     *
+     * @param int $userid The user ID.
+     * @param string $chatid The Telegram Chat ID.
+     * @return bool True on success.
      */
-    public function remove_chatid($userid = null) {
+    public function set_manual_chatid(int $userid, string $chatid): bool {
+        $clean = trim($chatid);
+        if (preg_match('/^-?\d+$/', $clean)) {
+            set_user_preference('message_processor_telegram_chatid', $clean, $userid);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Remove the user's Telegram chat id from preferences.
+     *
+     * @param int|null $userid The id to be cleared.
+     * @return void
+     */
+    public function remove_chatid(?int $userid = null): void {
         global $USER;
 
         if ($userid === null) {
             $userid = $USER->id;
-        } else if ($userid != $USER->id) {
-            require_capability('moodle/site:config', \context_system::instance());
         }
         unset_user_preference('message_processor_telegram_chatid', $userid);
-
-        return '';
     }
 
     /**
-     * Set the webhook for this site into the Telegram Bot.
-     * @return string Empty if successful, otherwise the error message.
+     * Configure the webhook URL in Telegram Bot.
+     *
+     * @param string $webhookurl The endpoint URL.
+     * @return string Empty string on success, error message on failure.
      */
-    public function set_webhook() {
-        return 'This feature is still under development... Stand by.';
+    public function set_webhook(string $webhookurl): string {
         if (empty($this->config('sitebottoken'))) {
-            $message = get_string('sitebottokennotsetup', 'message_telegram');
-        } else {
-            $response = $this->send_api_command('setWebhook', ['url' => $this->redirect_uri(), 'allowed_updates' => 'message']);
-            if (!empty($response) && isset($response->ok) && ($response->ok == true)) {
-                $this->set_config('webhook', '1');
-                $message = '';
-            } else if (!empty($response) && isset($response->error_code) && isset($response->description)) {
-                $message = $response->description;
-            }
+            return get_string('sitebottokennotsetup', 'message_telegram');
         }
-        return $message;
+
+        $params = [
+            'url' => $webhookurl,
+            'allowed_updates' => json_encode(['message']),
+        ];
+
+        $response = $this->send_api_command('setWebhook', $params);
+        if (!empty($response->ok)) {
+            $this->set_config('webhook', '1');
+            return '';
+        }
+
+        return $response->description ?? 'Failed to set webhook.';
+    }
+
+    /**
+     * Remove the Telegram webhook, reverting bot to getUpdates polling mode.
+     *
+     * @return string Empty string on success, error message on failure.
+     */
+    public function delete_webhook(): string {
+        if (empty($this->config('sitebottoken'))) {
+            return get_string('sitebottokennotsetup', 'message_telegram');
+        }
+
+        $response = $this->send_api_command('deleteWebhook');
+        if (!empty($response->ok)) {
+            $this->set_config('webhook', '0');
+            return '';
+        }
+
+        return $response->description ?? 'Failed to remove webhook.';
     }
 
     /**
      * Returns the results of a getUpdates API request.
-     * @return object The JSON decoded results object.
+     *
+     * @return array|false The decoded results array or false on failure.
      */
     public function get_updates() {
-        $response = $this->send_api_command('getUpdates');
-        if ($response->ok) {
+        $response = $this->send_api_command('getUpdates', ['limit' => 100]);
+        if (!empty($response->ok) && isset($response->result) && is_array($response->result)) {
             return $response->result;
-        } else {
-            return false;
         }
+        return false;
     }
 
     /**
-     * Send a Telegram API command and return the results.
-     * @param string $command The API command to send.
-     * @param array $params The parameters to send to the API command. Can be ommited.
-     * @return object The JSON decoded return object.
+     * Send a Telegram API command via HTTP POST and return decoded results.
+     *
+     * @param string $command The API method to execute.
+     * @param array $params The parameters to send.
+     * @return \stdClass|null The decoded response object or null.
      */
-    private function send_api_command($command, $params = null) {
-        if (empty($this->config('sitebottoken'))) {
-            return false;
+    protected function send_api_command(string $command, array $params = []): ?\stdClass {
+        $token = $this->config('sitebottoken');
+        if (empty($token)) {
+            return null;
         }
 
         if ($this->curl === null) {
+            require_once($GLOBALS['CFG']->dirroot . '/lib/filelib.php');
             $this->curl = new \curl();
         }
 
-        return json_decode($this->curl->get('https://api.telegram.org/bot'.$this->config('sitebottoken').'/'.$command, $params));
+        $url = 'https://api.telegram.org/bot' . $token . '/' . $command;
+        $rawresponse = $this->curl->post($url, $params);
+        $result = json_decode($rawresponse);
+
+        if (empty($result) || empty($result->ok)) {
+            $description = $result->description ?? 'Unknown error';
+            debugging('Telegram API command "' . $command . '" failed: ' . $description, DEBUG_DEVELOPER);
+        }
+
+        return $result;
     }
 }

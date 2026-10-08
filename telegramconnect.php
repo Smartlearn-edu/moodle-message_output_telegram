@@ -15,18 +15,50 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Telegram connection handler.
+ * Telegram connection handler and webhook endpoint.
  *
- * @package message_telegram
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require_once(__DIR__ . '/../../../config.php');
-require_once($CFG->dirroot.'/lib/filelib.php');
+// If incoming request is a Telegram Webhook POST payload.
+if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    define('NO_DEBUG_DISPLAY', true);
+    require_once(__DIR__ . '/../../../config.php');
 
-$action = optional_param('action', 'setwebhook', PARAM_TEXT);
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw);
+
+    if (!empty($data) && isset($data->message->text) && isset($data->message->chat->id)) {
+        $text = trim($data->message->text);
+        if (strpos($text, '/start') === 0) {
+            $parts = preg_split('/\s+/', $text, 2);
+            $token = $parts[1] ?? '';
+            if (!empty($token)) {
+                $targetvalue = 'usersecret::' . $token;
+                $pref = $DB->get_record('user_preferences', [
+                    'name' => 'message_processor_telegram_chatid',
+                    'value' => $targetvalue,
+                ]);
+                if ($pref) {
+                    set_user_preference('message_processor_telegram_chatid', (string)$data->message->chat->id, (int)$pref->userid);
+                }
+            }
+        }
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode(['ok' => true]);
+    exit(0);
+}
+
+require_once(__DIR__ . '/../../../config.php');
+require_once($CFG->dirroot . '/message/lib.php');
+
+$action = optional_param('action', '', PARAM_ALPHANUMEXT);
 
 $PAGE->set_url(new moodle_url('/message/output/telegram/telegramconnect.php'));
 $PAGE->set_context(context_system::instance());
@@ -35,23 +67,38 @@ require_login();
 
 $telegrammanager = new message_telegram\manager();
 
-if ($action == 'setwebhook') {
+if ($action === 'setwebhook') {
     require_sesskey();
     require_capability('moodle/site:config', context_system::instance());
+
     if (strpos($CFG->wwwroot, 'https:') !== 0) {
         $message = get_string('requirehttps', 'message_telegram');
     } else {
-        if (empty(get_config('message_telegram', 'webhook'))) {
-            $message = $telegrammanager->set_webhook();
-        }
+        $error = $telegrammanager->set_webhook($telegrammanager->redirect_uri());
+        $message = empty($error) ? get_string('webhookset', 'message_telegram') : $error;
     }
     redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']), $message);
-
-} else if ($action == 'removechatid') {
+} else if ($action === 'unsetwebhook') {
     require_sesskey();
-    $userid = optional_param('userid', 0, PARAM_INT);
-    if ($userid != 0) {
-        $message = $telegrammanager->remove_chatid($userid);
+    require_capability('moodle/site:config', context_system::instance());
+
+    $error = $telegrammanager->delete_webhook();
+    $message = empty($error) ? get_string('webhookremoved', 'message_telegram') : $error;
+    redirect(new moodle_url('/admin/settings.php', ['section' => 'messagesettingtelegram']), $message);
+} else if ($action === 'removechatid') {
+    require_sesskey();
+    $userid = optional_param('userid', $USER->id, PARAM_INT);
+    $user = core_user::get_user($userid, '*', MUST_EXIST);
+
+    if (!core_message_can_edit_message_profile($user)) {
+        throw new moodle_exception('cannoteditmessageprofile', 'message');
     }
-    redirect(new moodle_url('/message/notificationpreferences.php', ['userid' => $userid]), $message);
+
+    $telegrammanager->remove_chatid($userid);
+    redirect(
+        new moodle_url('/message/notificationpreferences.php', ['userid' => $userid]),
+        get_string('chatidremoved', 'message_telegram')
+    );
 }
+
+redirect(new moodle_url('/'));

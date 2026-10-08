@@ -17,34 +17,50 @@
 /**
  * Strings for telegram message plugin.
  *
- * @package message_telegram
- * @author  Mike Churchward
+ * @package    message_telegram
+ * @author     Mike Churchward
  * @copyright  2017 onwards Mike Churchward (mike.churchward@poetgroup.org)
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright  2025 Mohammad Nabil <mohammad@smartlearn.education>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['chatidremoved'] = 'Telegram connection removed.';
+$string['chatidupdated'] = 'Telegram Chat ID updated.';
 $string['configsitebotname'] = 'This will be filled in automatically when you save the bot token.';
-$string['configsitebottoken'] = 'Enter the site bot token from Botfather here.';
+$string['configsitebottoken'] = 'Enter the site bot token from BotFather here.';
 $string['configsitebotusername'] = 'This will be filled in automatically when you save the bot token.';
-$string['connectinstructions'] = 'Once you have clicked the link below, you will need to allow the link to open in Telegram with
-your Telegram account. In Telegram, click the "Start" button in the "{$a}" chat that opens to connect your account to Moodle.
-Once completed, come back to this page and click "Save changes". Full documentation
-<a href="https://docs.moodle.org/33/en/Telegram_message_processor#Configuring_user_preferences" target="_blank">here</a>.';
-$string['connectme'] = 'Connect my account to Telegram.';
-$string['notconfigured'] = 'The Telegram server hasn\'t been configured so Telegram messages cannot be sent';
+$string['connected'] = 'Connected';
+$string['connectedas'] = 'Connected (Chat ID: {$a})';
+$string['connectinstructions'] = 'Click the button below to open Telegram and start a chat with <strong>{$a}</strong>. In Telegram, click the <strong>Start</strong> button to connect your account. After clicking Start in Telegram, return to this page and save preferences.';
+$string['connectme'] = 'Connect with Telegram';
+$string['errorapi'] = 'Telegram API error: {$a}';
+$string['manualchatid'] = 'Or enter Telegram Chat ID manually';
+$string['manualchatid_help'] = 'If you already know your Telegram Chat ID (from @userinfobot or @raw_data_bot), you can enter it directly here.';
+$string['notconfigured'] = 'The Telegram bot has not been configured by the site administrator.';
+$string['notconnected'] = 'Not connected';
+$string['openinmoodle'] = 'Open in Moodle';
 $string['pluginname'] = 'Telegram';
+$string['privacy:metadata:chat_id'] = 'The Telegram chat ID of the message recipient.';
+$string['privacy:metadata:date'] = 'The timestamp when the notification was sent.';
+$string['privacy:metadata:externalpurpose'] = 'This plugin transmits notification content and recipient chat IDs to the Telegram Bot API (https://api.telegram.org) to deliver messages.';
+$string['privacy:metadata:preference:telegram_chatid'] = 'The Telegram chat ID or temporary connection token associated with the user.';
+$string['privacy:metadata:subject'] = 'The subject of the notification being sent.';
+$string['privacy:metadata:text'] = 'The body text of the notification being sent.';
+$string['privacy:preference:telegram_chatid'] = 'Your configured Telegram chat ID.';
+$string['removetelegram'] = 'Disconnect Telegram';
+$string['requirehttps'] = 'Site must use HTTPS for Telegram\'s webhook function.';
+$string['setupinstructions'] = 'Create a new Telegram Bot using BotFather. Click the link below and open it in Telegram. Use the "/newbot" command to create the bot. Specify a name (e.g., "{$a->name}") and a unique username ending in "bot" (e.g., "{$a->username}"). Copy the API token provided by BotFather into the field below.';
+$string['setwebhook'] = 'Setup Telegram webhook';
 $string['sitebotname'] = 'Bot name for site';
 $string['sitebottoken'] = 'Bot token for site';
 $string['sitebottokennotsetup'] = 'Bot token for site must be specified in plugin settings.';
 $string['sitebotusername'] = 'Bot username for site';
+$string['status'] = 'Telegram connection status';
 $string['telegrambottoken'] = 'Telegram bot token';
-$string['telegramchatid'] = 'Telegram chat id';
-$string['removetelegram'] = 'Remove Telegram connection';
-$string['requirehttps'] = 'Site must use HTTPS for Telegram\'s webhook function.';
-$string['setupinstructions'] = 'Create a new Telegram Bot using Botfather. Click the Botfather link below and open it in Telegram.
-Use the "/newbot" command in Telegram to start creating the bot. You will need to specify a botname, for example "{$a->name}", and a
-unique bot username, for example "{$a->username}". Full documentation
-<a href="https://docs.moodle.org/33/en/Telegram_message_processor" target="_blank">here</a>.';
-$string['setwebhook'] = 'Setup Telegram webhook';
+$string['telegramchatid'] = 'Telegram chat ID';
+$string['tokenexpired'] = 'The connection token has expired or is invalid. Please try connecting again.';
+$string['unsetwebhook'] = 'Remove Telegram webhook';
+$string['webhookremoved'] = 'Telegram webhook has been removed successfully.';
+$string['webhookset'] = 'Telegram webhook has been set successfully.';
