@@ -468,11 +468,24 @@ class manager {
 
     /**
      * Ensure that the custom user profile field for Telegram phone numbers exists.
+     * If a custom profile field of datatype 'phone' or a configured field already exists, this does not create a duplicate.
      *
-     * @return int The profile field ID.
+     * @return int|null The profile field ID, or null if an existing phone field is used.
      */
-    public static function ensure_profile_field(): int {
+    public static function ensure_profile_field(): ?int {
         global $DB;
+
+        // If customphonefield is already configured to an existing field, don't force telegram_phone.
+        $configured = get_config('message_telegram', 'customphonefield');
+        if (!empty($configured) && $DB->record_exists('user_info_field', ['shortname' => $configured])) {
+            return null;
+        }
+
+        // If a custom profile field with datatype 'phone' exists (e.g. from profilefield_phone), prefer it.
+        $existingphonefield = $DB->get_record('user_info_field', ['datatype' => 'phone'], 'id, shortname', IGNORE_MULTIPLE);
+        if ($existingphonefield) {
+            return (int)$existingphonefield->id;
+        }
 
         $field = $DB->get_record('user_info_field', ['shortname' => self::PROFILE_FIELD_SHORTNAME]);
         if ($field) {
