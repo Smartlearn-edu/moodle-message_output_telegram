@@ -481,10 +481,10 @@ class manager {
             return null;
         }
 
-        // If a custom profile field with datatype 'phone' exists (e.g. from profilefield_phone), prefer it.
-        $existingphonefield = $DB->get_record('user_info_field', ['datatype' => 'phone'], 'id, shortname', IGNORE_MULTIPLE);
-        if ($existingphonefield) {
-            return (int)$existingphonefield->id;
+        // If a custom profile field with datatype 'telegram' exists, prefer it.
+        $existingtelegramfield = $DB->get_record('user_info_field', ['datatype' => 'telegram'], 'id, shortname', IGNORE_MULTIPLE);
+        if ($existingtelegramfield) {
+            return (int)$existingtelegramfield->id;
         }
 
         $field = $DB->get_record('user_info_field', ['shortname' => self::PROFILE_FIELD_SHORTNAME]);
@@ -509,10 +509,12 @@ class manager {
             ['catid' => $categoryid]
         ) ?: 0;
 
+        $hastelegramplugin = array_key_exists('telegram', \core_component::get_plugin_list('profilefield'));
+
         $newfield = new \stdClass();
         $newfield->shortname = self::PROFILE_FIELD_SHORTNAME;
         $newfield->name = get_string('profile_field_name', 'message_telegram');
-        $newfield->datatype = 'text';
+        $newfield->datatype = $hastelegramplugin ? 'telegram' : 'text';
         $newfield->description = get_string('profile_field_desc', 'message_telegram');
         $newfield->descriptionformat = 1;
         $newfield->categoryid = $categoryid;
@@ -521,8 +523,8 @@ class manager {
         $newfield->locked = 0;
         $newfield->visible = 2; // PROFILE_VISIBLE_ALL
         $newfield->forceunique = 0;
-        $newfield->signup = 0;
-        $newfield->defaultdata = '';
+        $newfield->signup = 1;
+        $newfield->defaultdata = $hastelegramplugin ? 'EG' : '';
         $newfield->defaultdataformat = 0;
         $newfield->param1 = 30; // Display size.
         $newfield->param2 = 50; // Max length.
